@@ -92,11 +92,12 @@ The Elm web application provides:
 
 ### Command Line Interface
 
-The CLI tool `cli_v2.py` is aliased to 'look'. After activating the virtual environment:
+Alias the CLI tool `cli_v2.py` to something 'lu'. For convenience. 
+After activating the virtual environment:
 
 ```bash
 # Using the aliased command
-look COMMAND [ARGS]
+lu COMMAND [ARGS]
 
 # Or directly
 python cli_v2.py COMMAND [ARGS]
@@ -116,16 +117,16 @@ Available commands:
 
 ```bash
 # Add a document
-look add document.txt --title "My Document" --type "note"
+lu add document.txt --title "My Document" --type "note"
 
 # Search for documents
-look search "machine learning"
+lu search "machine learning"
 
 # List all documents
-look list
+lu list
 
 # Show the 5th document
-look show 5
+lu show 5
 ```
 
 ## Troubleshooting
