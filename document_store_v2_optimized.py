@@ -237,3 +237,58 @@ class DocumentStoreV2Optimized:
             raise e
         finally:
             session.close()
+    
+    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None) -> bool:
+        """Update a document's content and metadata"""
+        session = get_session(self.engine)
+        
+        try:
+            # Get the document from SQLite
+            document = session.query(Document).filter_by(id=doc_id).first()
+            if not document:
+                return False
+            
+            # Update fields if provided
+            if title is not None:
+                document.title = title
+            if content is not None:
+                document.content = content
+            if doc_type is not None:
+                document.doc_type = doc_type
+            
+            session.commit()
+            
+            # If content was updated, we need to update the embedding
+            if content is not None and self.model:
+                # Generate new embedding
+                embedding = self.model.encode([content])[0].tolist()
+                
+                # Update in ChromaDB
+                self.collection.update(
+                    ids=[doc_id],
+                    embeddings=[embedding],
+                    documents=[content],
+                    metadatas=[{
+                        "title": document.title,
+                        "created_at": document.created_at.isoformat(),
+                        "doc_type": document.doc_type or ""
+                    }]
+                )
+            else:
+                # Just update metadata if content wasn't changed
+                self.collection.update(
+                    ids=[doc_id],
+                    metadatas=[{
+                        "title": document.title,
+                        "created_at": document.created_at.isoformat(),
+                        "doc_type": document.doc_type or ""
+                    }]
+                )
+            
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()

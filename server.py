@@ -17,6 +17,12 @@ class RenameRequest(BaseModel):
     new_title: str
 
 
+class UpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    doc_type: Optional[str] = None
+
+
 class SearchRequest(BaseModel):
     query: str
     limit: int = 5
@@ -128,6 +134,17 @@ def rename_document(doc_id: str, request: RenameRequest):
     """Rename a document by ID"""
     if document_store.rename_document(doc_id, request.new_title):
         return {"message": f"Document {doc_id} renamed to: {request.new_title}"}
+    raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+
+
+@app.put("/documents/{doc_id}", response_model=DocumentResponse)
+def update_document(doc_id: str, request: UpdateRequest):
+    """Update a document's content and metadata"""
+    if document_store.update_document(doc_id, request.title, request.content, request.doc_type):
+        # Get the updated document
+        documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+        if documents:
+            return DocumentResponse(**documents[0])
     raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
 
 
