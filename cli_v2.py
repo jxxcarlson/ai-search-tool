@@ -2,9 +2,11 @@
 import click
 import json
 import os
+import sys
 import subprocess
 import webbrowser
 import html
+import random
 from pathlib import Path
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 
@@ -32,7 +34,9 @@ def add(title, path):
     """
     # Check if file exists
     if not os.path.exists(path):
+        click.echo()
         click.echo(f"Error: File not found: {path}", err=True)
+        click.echo()
         return
     
     # Read the document content
@@ -40,7 +44,9 @@ def add(title, path):
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
     except Exception as e:
+        click.echo()
         click.echo(f"Error reading file: {e}", err=True)
+        click.echo()
         return
     
     # Infer document type from file extension
@@ -49,8 +55,10 @@ def add(title, path):
     # Add to store
     store = DocumentStoreV2(load_model=True)  # Need model for embeddings
     doc_id = store.add_document(title, content, doc_type=doc_type)
+    click.echo()
     click.echo(f"Document added successfully with ID: {doc_id}")
     click.echo(f"Source file: {path} (type: {doc_type})")
+    click.echo()
 
 
 @cli.command()
@@ -60,11 +68,13 @@ def import_docs(file):
     store = DocumentStoreV2(load_model=True)  # Need model for embeddings
     documents = json.load(file)
     
+    click.echo()  # Blank line before
     for doc in documents:
         doc_id = store.add_document(doc['title'], doc['content'])
         click.echo(f"Added: {doc['title']} (ID: {doc_id})")
     
     click.echo(f"\nImported {len(documents)} documents successfully")
+    click.echo()  # Blank line after
 
 
 @cli.command()
@@ -77,24 +87,31 @@ def search(query, limit, verbose):
     results = store.search(query, k=limit)
     
     if not results:
+        click.echo()
         click.echo("No documents found.")
+        click.echo()
         return
     
     if verbose:
         # Verbose format (original format)
-        click.echo(f"\nTop {len(results)} results for '{query}':\n")
+        click.echo()  # Blank line before
+        click.echo(f"Top {len(results)} results for '{query}':\n")
         for i, doc in enumerate(results, 1):
             doc_type = doc.get('doc_type', 'unknown')
-            click.echo(f"{i}. {doc['title']} [{doc_type}] (Score: {doc['similarity_score']:.3f})")
+            doc_index = doc.get('index', '?')
+            click.echo(f"{doc_index}. {doc['title']} [{doc_type}] (Score: {doc['similarity_score']:.3f})")
             click.echo(f"   ID: {doc['id']}")
             click.echo(f"   Content: {doc['content'][:100]}...")
             click.echo()
     else:
         # Compact format
-        click.echo(f"\nResults for '{query}':")
+        click.echo()  # Blank line before
+        click.echo(f"Results for '{query}':")
         for i, doc in enumerate(results, 1):
             doc_type = doc.get('doc_type', 'unknown')
-            click.echo(f"{i}. {doc['title']} [{doc_type}] ({doc['similarity_score']:.3f})")
+            doc_index = doc.get('index', '?')
+            click.echo(f"{doc_index}. {doc['title']} [{doc_type}] ({doc['similarity_score']:.3f})")
+        click.echo()  # Blank line after
 
 
 @cli.command()
@@ -105,7 +122,9 @@ def list(verbose):
     documents = store.get_all_documents()
     
     if not documents:
+        click.echo()
         click.echo("No documents in the store.")
+        click.echo()
         return
     
     # Sort by creation date for consistent ordering
@@ -113,18 +132,22 @@ def list(verbose):
     
     if verbose:
         # Verbose format (original format)
-        click.echo(f"\nTotal documents: {len(documents)}\n")
+        click.echo()  # Blank line before
+        click.echo(f"Total documents: {len(documents)}\n")
         for doc in documents:
             doc_type = doc.get('doc_type', 'unknown')
             click.echo(f"- {doc['title']} [{doc_type}] (ID: {doc['id']})")
             click.echo(f"  Created: {doc['created_at']}")
             click.echo(f"  Content: {doc['content'][:80]}...")
             click.echo()
+        # No extra echo needed - last document already adds blank
     else:
         # Compact format
+        click.echo()  # Blank line before
         for i, doc in enumerate(documents, 1):
             doc_type = doc.get('doc_type', 'unknown')
             click.echo(f"{i}. {doc['title']} [{doc_type}]")
+        click.echo()  # Blank line after
 
 
 @cli.command()
@@ -132,10 +155,12 @@ def list(verbose):
 def delete(doc_id):
     """Delete a document by ID"""
     store = DocumentStoreV2(load_model=False)  # No model needed
+    click.echo()
     if store.delete_document(doc_id):
         click.echo(f"Document {doc_id} deleted successfully")
     else:
         click.echo(f"Document {doc_id} not found")
+    click.echo()
 
 
 @cli.command()
@@ -144,12 +169,14 @@ def stats():
     store = DocumentStoreV2(load_model=False)  # No model needed
     stats = store.get_stats()
     
-    click.echo(f"\nDocument Store Statistics:")
+    click.echo()  # Blank line before
+    click.echo("Document Store Statistics:")
     click.echo(f"- Total documents: {stats['total_documents']}")
     click.echo(f"- ChromaDB collection size: {stats['chroma_collection_count']}")
     click.echo(f"- Embedding dimension: {stats['embedding_dimension']}")
     click.echo(f"- Model: {stats['model']}")
     click.echo(f"- Storage location: {stats['storage_location']}")
+    click.echo()  # Blank line after
 
 
 @cli.command()
@@ -162,9 +189,140 @@ def clear(confirm):
     store = DocumentStoreV2(load_model=False)  # No model needed
     try:
         count = store.clear_all()
+        click.echo()
         click.echo(f"Successfully cleared {count} documents from the store.")
+        click.echo()
     except Exception as e:
+        click.echo()
         click.echo(f"Error clearing store: {e}", err=True)
+        click.echo()
+
+
+@cli.command()
+@click.argument('doc_id')
+@click.option('--title', prompt='New title', help='New title for the document')
+def rename(doc_id, title):
+    """Rename a document by ID"""
+    store = DocumentStoreV2(load_model=False)  # No model needed
+    
+    click.echo()
+    if store.rename_document(doc_id, title):
+        click.echo(f"Document {doc_id} renamed to: {title}")
+    else:
+        click.echo(f"Document {doc_id} not found", err=True)
+    click.echo()
+
+
+@cli.command()
+@click.argument('index', type=int)
+def info(index):
+    """Show detailed information about the Nth document"""
+    store = DocumentStoreV2(load_model=False)  # No model needed
+    
+    # Get the document
+    document = store.get_document_by_index(index)
+    if not document:
+        click.echo()
+        click.echo(f"Error: No document found at index {index}", err=True)
+        click.echo()
+        return
+    
+    # Format creation date
+    created_at = document.get('created_at', 'N/A')
+    if created_at != 'N/A':
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_at = dt.strftime('%b %d, %Y at %I:%M %p')
+        except:
+            pass
+    
+    # Display info
+    click.echo()  # Blank line before
+    click.echo(f"Document {index}:")
+    click.echo(f"  Title: {document['title']}")
+    click.echo(f"  Type: [{document.get('doc_type', 'unknown')}]")
+    click.echo(f"  Created: {created_at}")
+    click.echo(f"  ID: {document['id']}")
+    click.echo()  # Blank line after
+
+
+@cli.command()
+def size():
+    """Show the number of documents in the store"""
+    store = DocumentStoreV2(load_model=False)  # No model needed
+    documents = store.get_all_documents()
+    count = len(documents)
+    
+    click.echo()
+    click.echo(f"{count}")
+    click.echo()
+
+
+@cli.command()
+@click.argument('n', type=int, required=False)
+def tail(n):
+    """List the last N documents (default: 10)"""
+    if n is None:
+        n = 10
+    store = DocumentStoreV2(load_model=False)  # No model needed
+    documents = store.get_all_documents()
+    
+    if not documents:
+        click.echo()
+        click.echo("No documents in the store.")
+        click.echo()
+        return
+    
+    # Sort by creation date to ensure consistent ordering
+    documents.sort(key=lambda d: d.get('created_at', ''))
+    
+    # Get the last n documents
+    last_n = documents[-n:] if n < len(documents) else documents
+    
+    # Display in reverse order (most recent first)
+    click.echo()
+    click.echo(f"Last {len(last_n)} documents (most recent first):")
+    for i, doc in enumerate(reversed(last_n), 1):
+        doc_type = doc.get('doc_type', 'unknown')
+        # Calculate the actual document index
+        actual_index = len(documents) - len(last_n) + len(last_n) - i + 1
+        click.echo(f"{actual_index}. {doc['title']} [{doc_type}]")
+    click.echo()
+
+
+@cli.command()
+@click.argument('n', type=int, required=False)
+def random(n):
+    """Show N random documents (default: 10)"""
+    import random as rand_module
+    
+    if n is None:
+        n = 10
+    
+    store = DocumentStoreV2(load_model=False)  # No model needed
+    documents = store.get_all_documents()
+    
+    if not documents:
+        click.echo()
+        click.echo("No documents in the store.")
+        click.echo()
+        return
+    
+    # Sort by creation date to maintain consistent indexing
+    documents.sort(key=lambda d: d.get('created_at', ''))
+    
+    # Sample random documents
+    sample_size = min(n, len(documents))
+    random_indices = rand_module.sample(range(len(documents)), sample_size)
+    random_docs = [(i + 1, documents[i]) for i in sorted(random_indices)]
+    
+    click.echo()
+    click.echo(f"{sample_size} random documents:")
+    for idx, doc in random_docs:
+        doc_type = doc.get('doc_type', 'unknown')
+        click.echo(f"{idx}. {doc['title']} [{doc_type}]")
+    click.echo()
 
 
 @cli.command()
@@ -176,7 +334,9 @@ def show(index):
     # Get the document
     document = store.get_document_by_index(index)
     if not document:
+        click.echo()
         click.echo(f"Error: No document found at index {index}", err=True)
+        click.echo()
         return
     
     # Get the viewer directory
@@ -184,7 +344,9 @@ def show(index):
     viewer_file = viewer_dir / 'index.html'
     
     if not viewer_file.exists():
+        click.echo()
         click.echo("Error: Viewer application not found", err=True)
+        click.echo()
         return
     
     # For standalone mode, create a simple HTML with inline viewer
@@ -268,7 +430,9 @@ def show(index):
         f.write(html_content)
         temp_file = f.name
     
+    click.echo()
     click.echo(f"Opening document {index}: {document['title']}")
+    click.echo()
     
     # Open in default browser
     try:
@@ -277,5 +441,17 @@ def show(index):
         click.echo(f"Error opening viewer: {e}", err=True)
 
 
+def main():
+    # Check if no arguments provided (will show help)
+    if len(sys.argv) == 1:
+        click.echo()  # Blank line before
+        sys.argv.append('--help')  # Add --help flag
+    
+    try:
+        cli()
+    finally:
+        if '--help' in sys.argv:
+            click.echo()  # Blank line after help
+
 if __name__ == '__main__':
-    cli()
+    main()

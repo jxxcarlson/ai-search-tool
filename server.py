@@ -13,6 +13,10 @@ class DocumentRequest(BaseModel):
     doc_type: Optional[str] = None
 
 
+class RenameRequest(BaseModel):
+    new_title: str
+
+
 class SearchRequest(BaseModel):
     query: str
     limit: int = 5
@@ -26,6 +30,7 @@ class DocumentResponse(BaseModel):
     created_at: Optional[str]
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
+    index: Optional[int] = None
 
 
 app = FastAPI(title="Document Search API")
@@ -116,6 +121,14 @@ def clear_all_documents():
         return {"message": f"Successfully cleared {count} documents from the store"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/documents/{doc_id}/rename")
+def rename_document(doc_id: str, request: RenameRequest):
+    """Rename a document by ID"""
+    if document_store.rename_document(doc_id, request.new_title):
+        return {"message": f"Document {doc_id} renamed to: {request.new_title}"}
+    raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
 
 
 if __name__ == "__main__":

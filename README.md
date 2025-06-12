@@ -1,71 +1,22 @@
-# Document Search Tool with Word Embeddings
+# Runing the AI Search Tool
 
-A prototype application that stores documents, generates word embeddings, and enables semantic search using natural language queries.
+Do this: source venv/bin/activate
 
-## Features
+The you can do the following, except note that cli_v2.py is aliased to 'look'
 
-- Store documents with titles and content
-- Automatic word embedding generation using Sentence Transformers
-- Vector storage using FAISS for efficient similarity search
-- CLI interface for easy interaction
-- Semantic search capabilities
+Usage: cli_v2.py [OPTIONS] COMMAND [ARGS]...
 
-## Installation
+  Document Store with ChromaDB and SQLite - Search Tool
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+Options:
+  --help  Show this message and exit.
 
-## Usage
-
-### Add a single document
-```bash
-python cli.py add
-```
-
-### Import multiple documents
-```bash
-python cli.py import-docs --file sample_documents.json
-```
-
-### Search documents
-```bash
-python cli.py search "machine learning algorithms"
-python cli.py search "how to build web applications" --limit 3
-```
-
-### List all documents
-```bash
-python cli.py list
-```
-
-### Show statistics
-```bash
-python cli.py stats
-```
-
-### Delete a document
-```bash
-python cli.py delete <doc_id>
-```
-
-## How it works
-
-1. **Document Storage**: Documents are stored as JSON files with metadata
-2. **Embeddings**: Uses Sentence Transformers (all-MiniLM-L6-v2) to convert text to 384-dimensional vectors
-3. **Vector Storage**: FAISS index for fast similarity search
-4. **Search**: Converts query to embedding and finds nearest neighbors
-
-## Example
-
-```bash
-# Import sample documents
-python cli.py import-docs --file sample_documents.json
-
-# Search for Python-related content
-python cli.py search "python programming tutorials"
-
-# Search for security topics
-python cli.py search "cybersecurity and data protection"
-```
+Commands:
+  add          Add a new document to the store from a file  Examples:...
+  clear        Clear all documents and embeddings from the store
+  delete       Delete a document by ID
+  import-docs  Import multiple documents from a JSON file
+  list         List all documents in the store
+  search       Search for documents using semantic similarity
+  show         Display the Nth document in a viewer window
+  stats        Show statistics about the document store

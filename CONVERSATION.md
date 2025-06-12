@@ -398,3 +398,199 @@ run clear --confirm
 - Clears all embeddings from ChromaDB
 - Recreates empty ChromaDB collection
 - Reports how many documents were deleted
+
+## HTTP API for Frontend Integration
+
+The FastAPI server (`server.py`) provides a complete HTTP API that mirrors all CLI functionality, making it easy to integrate the document search tool into web applications and other frontends.
+
+### API Overview
+
+The server runs on port 8001 by default and provides the following endpoints:
+
+**Base URL**: `http://localhost:8001`
+
+### Endpoints
+
+#### 1. Health Check
+- **GET** `/health`
+- Returns server status and uptime
+- Response: `{"status": "healthy", "model_loaded": true, "uptime_seconds": 123.45}`
+
+#### 2. Document Operations
+
+##### List All Documents
+- **GET** `/documents`
+- Returns all documents with metadata
+- Response: 
+  ```json
+  [
+    {
+      "id": "doc123",
+      "title": "Document Title",
+      "content": "Document content...",
+      "created_at": "2025-01-06T12:00:00",
+      "updated_at": "2025-01-06T12:00:00"
+    }
+  ]
+  ```
+
+##### Add Document
+- **POST** `/documents`
+- Request body:
+  ```json
+  {
+    "title": "Document Title",
+    "content": "Document content..."
+  }
+  ```
+- Response: 
+  ```json
+  {
+    "id": "doc123",
+    "title": "Document Title",
+    "message": "Document added successfully"
+  }
+  ```
+
+##### Get Document by ID
+- **GET** `/documents/{document_id}`
+- Returns single document with full content
+- Response: Same as single document in list
+
+##### Delete Document
+- **DELETE** `/documents/{document_id}`
+- Response: `{"message": "Document deleted successfully"}`
+
+##### Clear All Documents
+- **DELETE** `/documents/clear-all`
+- Deletes all documents and embeddings
+- Response: `{"message": "All 12 documents deleted successfully"}`
+
+#### 3. Search
+- **POST** `/search`
+- Request body:
+  ```json
+  {
+    "query": "machine learning algorithms",
+    "limit": 5
+  }
+  ```
+- Response:
+  ```json
+  [
+    {
+      "id": "doc123",
+      "title": "Introduction to ML",
+      "content": "Machine learning is...",
+      "score": 0.92,
+      "created_at": "2025-01-06T12:00:00",
+      "updated_at": "2025-01-06T12:00:00"
+    }
+  ]
+  ```
+
+#### 4. Import Documents
+- **POST** `/import-documents`
+- Request body: Array of documents
+  ```json
+  [
+    {
+      "title": "Document 1",
+      "content": "Content 1"
+    },
+    {
+      "title": "Document 2", 
+      "content": "Content 2"
+    }
+  ]
+  ```
+- Response: `{"message": "Successfully imported 2 documents"}`
+
+#### 5. Statistics
+- **GET** `/stats`
+- Returns collection statistics
+- Response:
+  ```json
+  {
+    "total_documents": 12,
+    "embedding_dimensions": 384,
+    "model_name": "all-MiniLM-L6-v2",
+    "chroma_collection": "documents"
+  }
+  ```
+
+### Frontend Integration Examples
+
+#### JavaScript/Fetch Example
+```javascript
+// Search for documents
+const searchDocuments = async (query) => {
+  const response = await fetch('http://localhost:8001/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, limit: 5 })
+  });
+  return await response.json();
+};
+
+// Add a document
+const addDocument = async (title, content) => {
+  const response = await fetch('http://localhost:8001/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content })
+  });
+  return await response.json();
+};
+```
+
+#### Python Requests Example
+```python
+import requests
+
+# Search documents
+response = requests.post('http://localhost:8001/search', 
+    json={'query': 'machine learning', 'limit': 5})
+results = response.json()
+
+# List all documents
+response = requests.get('http://localhost:8001/documents')
+documents = response.json()
+```
+
+### API Documentation
+
+The server automatically generates interactive API documentation:
+- **Swagger UI**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
+
+These interfaces allow you to:
+- Explore all endpoints
+- View request/response schemas
+- Test API calls directly from the browser
+
+### Error Handling
+
+All endpoints return appropriate HTTP status codes:
+- `200`: Success
+- `404`: Document not found
+- `422`: Invalid request data
+- `500`: Server error
+
+Error responses include a detail message:
+```json
+{
+  "detail": "Document not found"
+}
+```
+
+### CORS Support
+
+The server includes CORS middleware allowing requests from any origin, making it easy to integrate with frontend applications running on different ports or domains.
+
+### Performance Considerations
+
+- The server loads the ML model once at startup and keeps it in memory
+- All operations except the initial model loading are fast (<100ms)
+- The server can handle multiple concurrent requests
+- For production use, consider running behind a reverse proxy like nginx

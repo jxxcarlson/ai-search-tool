@@ -106,24 +106,31 @@ def search(query, limit, verbose):
         results = response.json()
         
         if not results:
+            click.echo()
             click.echo("No documents found.")
+            click.echo()
             return
         
         if verbose:
             # Verbose format (original format)
-            click.echo(f"\nTop {len(results)} results for '{query}':\n")
+            click.echo()  # Blank line before
+            click.echo(f"Top {len(results)} results for '{query}':\n")
             for i, doc in enumerate(results, 1):
                 doc_type = doc.get('doc_type', 'unknown')
-                click.echo(f"{i}. {doc['title']} [{doc_type}] (Score: {doc['similarity_score']:.3f})")
+                doc_index = doc.get('index', '?')
+                click.echo(f"{doc_index}. {doc['title']} [{doc_type}] (Score: {doc['similarity_score']:.3f})")
                 click.echo(f"   ID: {doc['id']}")
                 click.echo(f"   Content: {doc['content'][:100]}...")
                 click.echo()
         else:
             # Compact format
-            click.echo(f"\nResults for '{query}':")
+            click.echo()  # Blank line before
+            click.echo(f"Results for '{query}':")
             for i, doc in enumerate(results, 1):
                 doc_type = doc.get('doc_type', 'unknown')
-                click.echo(f"{i}. {doc['title']} [{doc_type}] ({doc['similarity_score']:.3f})")
+                doc_index = doc.get('index', '?')
+                click.echo(f"{doc_index}. {doc['title']} [{doc_type}] ({doc['similarity_score']:.3f})")
+            click.echo()  # Blank line after
     else:
         click.echo(f"Error: {response.text}", err=True)
 
@@ -211,6 +218,155 @@ def clear(confirm):
 
 
 @cli.command()
+@click.argument('doc_id')
+@click.option('--title', prompt='New title', help='New title for the document')
+def rename(doc_id, title):
+    """Rename a document by ID"""
+    response = httpx.put(
+        f"{API_BASE_URL}/documents/{doc_id}/rename",
+        json={"new_title": title}
+    )
+    
+    if response.status_code == 200:
+        result = response.json()
+        click.echo(result['message'])
+    elif response.status_code == 404:
+        click.echo(f"Document {doc_id} not found", err=True)
+    else:
+        click.echo(f"Error: {response.text}", err=True)
+
+
+@cli.command()
+@click.argument('index', type=int)
+def info(index):
+    """Show detailed information about the Nth document"""
+    # Get document by index
+    response = httpx.get(f"{API_BASE_URL}/documents/by-index/{index}")
+    
+    if response.status_code == 404:
+        click.echo(f"Error: No document found at index {index}", err=True)
+        return
+    elif response.status_code != 200:
+        click.echo(f"Error: {response.text}", err=True)
+        return
+    
+    document = response.json()
+    
+    # Format creation date
+    created_at = document.get('created_at', 'N/A')
+    if created_at != 'N/A':
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_at = dt.strftime('%b %d, %Y at %I:%M %p')
+        except:
+            pass
+    
+    # Display info
+    click.echo(f"\nDocument {index}:")
+    click.echo(f"  Title: {document['title']}")
+    click.echo(f"  Type: [{document.get('doc_type', 'unknown')}]")
+    click.echo(f"  Created: {created_at}")
+    click.echo(f"  ID: {document['id']}")
+
+
+@cli.command()
+def size():
+    """Show the number of documents in the store"""
+    response = httpx.get(f"{API_BASE_URL}/documents")
+    
+    if response.status_code == 200:
+        documents = response.json()
+        count = len(documents)
+        
+        click.echo()
+        click.echo(f"{count}")
+        click.echo()
+    else:
+        click.echo()
+        click.echo(f"Error: {response.text}", err=True)
+        click.echo()
+
+
+@cli.command()
+@click.argument('n', type=int, required=False)
+def tail(n):
+    """List the last N documents (default: 10)"""
+    if n is None:
+        n = 10
+    response = httpx.get(f"{API_BASE_URL}/documents")
+    
+    if response.status_code == 200:
+        documents = response.json()
+        
+        if not documents:
+            click.echo()
+            click.echo("No documents in the store.")
+            click.echo()
+            return
+        
+        # Sort by creation date to ensure consistent ordering
+        documents.sort(key=lambda d: d.get('created_at', ''))
+        
+        # Get the last n documents
+        last_n = documents[-n:] if n < len(documents) else documents
+        
+        # Display in reverse order (most recent first)
+        click.echo()
+        click.echo(f"Last {len(last_n)} documents (most recent first):")
+        for i, doc in enumerate(reversed(last_n), 1):
+            doc_type = doc.get('doc_type', 'unknown')
+            # Calculate the actual document index
+            actual_index = len(documents) - len(last_n) + len(last_n) - i + 1
+            click.echo(f"{actual_index}. {doc['title']} [{doc_type}]")
+        click.echo()
+    else:
+        click.echo()
+        click.echo(f"Error: {response.text}", err=True)
+        click.echo()
+
+
+@cli.command()
+@click.argument('n', type=int, required=False)
+def random(n):
+    """Show N random documents (default: 10)"""
+    import random as rand_module
+    
+    if n is None:
+        n = 10
+    
+    response = httpx.get(f"{API_BASE_URL}/documents")
+    
+    if response.status_code == 200:
+        documents = response.json()
+        
+        if not documents:
+            click.echo()
+            click.echo("No documents in the store.")
+            click.echo()
+            return
+        
+        # Sort by creation date to maintain consistent indexing
+        documents.sort(key=lambda d: d.get('created_at', ''))
+        
+        # Sample random documents
+        sample_size = min(n, len(documents))
+        random_indices = rand_module.sample(range(len(documents)), sample_size)
+        random_docs = [(i + 1, documents[i]) for i in sorted(random_indices)]
+        
+        click.echo()
+        click.echo(f"{sample_size} random documents:")
+        for idx, doc in random_docs:
+            doc_type = doc.get('doc_type', 'unknown')
+            click.echo(f"{idx}. {doc['title']} [{doc_type}]")
+        click.echo()
+    else:
+        click.echo()
+        click.echo(f"Error: {response.text}", err=True)
+        click.echo()
+
+
+@cli.command()
 @click.argument('index', type=int)
 def show(index):
     """Display the Nth document in a viewer window"""
@@ -254,5 +410,17 @@ def show(index):
         click.echo(f"Error opening viewer: {e}", err=True)
 
 
+def main():
+    # Check if no arguments provided (will show help)
+    if len(sys.argv) == 1:
+        click.echo()  # Blank line before
+        sys.argv.append('--help')  # Add --help flag
+    
+    try:
+        cli()
+    finally:
+        if '--help' in sys.argv:
+            click.echo()  # Blank line after help
+
 if __name__ == '__main__':
-    cli()
+    main()

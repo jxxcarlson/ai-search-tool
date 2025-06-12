@@ -104,12 +104,18 @@ class DocumentStoreV2Optimized:
         search_results = []
         
         try:
+            # Get all documents ordered by created_at to find their index
+            all_docs = session.query(Document).order_by(Document.created_at).all()
+            doc_id_to_index = {doc.id: idx + 1 for idx, doc in enumerate(all_docs)}
+            
             for idx, doc_id in enumerate(results['ids'][0]):
                 document = session.query(Document).filter_by(id=doc_id).first()
                 if document:
                     result = document.to_dict()
                     # Add similarity score (convert distance to similarity)
                     result['similarity_score'] = 1 - results['distances'][0][idx]
+                    # Add the document's actual index
+                    result['index'] = doc_id_to_index.get(doc_id, 0)
                     search_results.append(result)
             
             return search_results
@@ -199,6 +205,33 @@ class DocumentStoreV2Optimized:
             )
             
             return count
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+    
+    def rename_document(self, doc_id: str, new_title: str) -> bool:
+        """Rename a document by ID - no model needed"""
+        session = get_session(self.engine)
+        
+        try:
+            # Update in SQLite
+            document = session.query(Document).filter_by(id=doc_id).first()
+            if not document:
+                return False
+            
+            document.title = new_title
+            session.commit()
+            
+            # Update metadata in ChromaDB
+            self.collection.update(
+                ids=[doc_id],
+                metadatas=[{"title": new_title, "created_at": document.created_at.isoformat()}]
+            )
+            
+            return True
+            
         except Exception as e:
             session.rollback()
             raise e
