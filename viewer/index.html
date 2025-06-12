@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 id="doc-title">Loading...</h1>
+            <div class="metadata">
+                <span class="meta-item">
+                    <strong>Created:</strong> <span id="created-date">-</span>
+                </span>
+                <span class="meta-item">
+                    <strong>Modified:</strong> <span id="modified-date">-</span>
+                </span>
+                <span class="meta-item">
+                    <strong>Type:</strong> <span id="doc-type">-</span>
+                </span>
+            </div>
+        </header>
+        
+        <main id="content-area">
+            <div id="doc-content">
+                <!-- Content will be inserted here -->
+            </div>
+        </main>
+        
+        <div id="error-message" class="error hidden">
+            Error loading document
+        </div>
+    </div>
+    
+    <script src="viewer.js"></script>
+</body>
+</html>

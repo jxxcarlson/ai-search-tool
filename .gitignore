@@ -1,0 +1,104 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Virtual environment
+venv/
+env/
+ENV/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project-specific data and storage
+storage/
+storage/*
+*.db
+*.sqlite
+*.sqlite3
+
+# ChromaDB data
+chroma_db/
+.chroma/
+
+# FAISS indices
+*.faiss
+faiss_index
+*.index
+
+# Document storage (if using file-based storage)
+documents/
+embeddings/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Log files
+*.log
+logs/
+
+# Config files with secrets (if any)
+config.local.py
+.env.local
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt

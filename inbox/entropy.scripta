@@ -1,0 +1,937 @@
+| title
+Entropy
+
+[tags jxxcarlson:entropy]
+
+
+| banner
+[ilink Statistical Mechanics id-5d75e003-51fa-4cfb-851a-06e0090bf0e1]
+
+
+
+
+
+
+
+
+
+
+
+
+# Introduction
+
+
+
+The notion of entropy stems from the observation that
+early steam engines were grossly inefficient: a large
+input of heat energy resulted in a small output of 
+mechanical energy. The efficiency of the Newcomen engine, 
+discussed in section [ref heat-engines] below was estimated to be
+only $0.02\%$! The first forward step in understanding
+the cause of this inefficiency came from Sadi Carnot
+in 1824.  The efficiency of a heat engine is the ratio
+of the mechanical work produced to the heat supplied to the engine:
+
+|| equation
+\label{efficiency-def}
+\eta = \frac{W}{Q_H}
+
+In each cycle, the engine absorbs an amount of heat $Q_H$ at temperature
+$T_H$ from the "hot" reservoir (the boiler) and expels an amount of heat
+$Q_C$ at temperature $T_C$ to the environment. The difference $W = Q_H - Q_T$
+is the work done.  This is conservation of energy, the first law of
+thermodynamics. Substituting this into [eqref efficiency-def], we have
+
+|| equation
+\label{efficiency-2}
+\eta = 1 - \frac{Q_C}{Q_H}
+
+
+ Carnot described an ideal heat engine whose
+efficiency is
+
+|| equation
+\eta = 1 - \frac{T_C}{T_H}
+
+No real engine can be as efficient as
+this ideal engine, which operates a four-phase "Carnot cycle"
+which we describe in secton [ref the-carnot-cycle] below.  This is
+Carnot's inequality:
+
+
+|| equation
+\eta \le 1 - \frac{T_C}{T_H}
+
+It is equivalent to the second law of thermodynamics, which in its
+original form states that heat transfer is always from hot to cold.
+Once we have the concept of entropy, we can say instead that
+in a closed system, entropy increases with time.
+
+
+Key in the analysis of the "Carnot cycle"
+is the ratio of heat transferred to the temperature at which it is transferred. Call it $Q/T$. In the hands of  Clausius (1859), this 
+ratio led to the notion a entropy.  Like pressure, temperature,
+and volume, the entropy depends only on the current state of
+the system, not on how it got there.  Clausius' definition was
+
+|| equation
+\label{def-clausius-entropy}
+S_{\text{final}} - S_{\text{initial}} = \int \frac{dQ}{T}
+
+where the integral is taken along any [i reversible] path
+that eads from $S_{\text{initial}}$ to $S_{\text{final}}$.
+You can think of the integral as the sum of quantities $Q_i/T_i$
+where the path is broken into small segemnts along which an amount
+of heat $Q_i$ is transferred at temperature $T_i$.
+See section [ref reversibility] for a dicussion of reversibility.
+
+A quite different definition of entropy was given by Ludwig
+Boltzmann in 1872.  Imagine a system such as an ideal gas
+confined to a container of some kind.
+Classically, this system is characterized by 
+certain [term state variables]: pressure $P$, volume $V$,
+and temperature $T$.  The state variables satisfy the 
+ideal gas law
+
+|| equation
+\label{ideal-gas-law}
+PV = nRT,
+
+and so are not independent. 
+Here $n$ is the number of moles of substrance and
+$R = 6.022 \times 10^{23}$. Any two of the state variables
+$P$, $V$, $T$ determine [term macrostate] of the gas. 
+
+
+
+
+To any given macrostate correspond many [i microstates].  
+To explain what a microstate is, recall that at any instant of time the
+state of the gas is given by the positions and momenta of the 
+$N$ molecules which make up the gas.  There are $3N$ position
+coordinates $q_i$ and $3N$ momentum coordinates $p_i$. The
+microstate of the system is given by a point in a $6N$-dimensional
+space, the [term phase space].  For a typical small macroscopic system,
+say a droplet of water, $N$ is about $10^{20}$.  
+
+Boltzmann proposed to count the number of microstates that 
+correspond to a given macrostate, say a state with given pressure 
+and volume. The position
+and momentum coordinates of particles belonging to this
+macrostate are bounded, so one can think of
+phase space $\phase$ as a $6N$-dimensional rectangular sold — a "box." That box has a volume $V_\phase$ gotten by multiplying
+the lengths of its $6N$ sides.  Now imagine dividing this box 
+into a multitude of tiny, nonoverlapping subboxes. Each point
+of a given subbox is a microstate of the system, and so belongs
+to some macrostate.  If the subbox is small enough, all of 
+its microstates have nearly the same macrostate.  Therefore
+we can speak of [emph the] microstate of a subbox.  Now count
+the number of subboxes whose microstate belongs to the given
+macrostate.  Call this number $\Omega$.  Boltzmann defined
+the entropy as
+
+|| equation
+\label{def-boltzmann-entropy}
+S = k_B \log \Omega,
+
+where $k_B = 1.38 \times 10^{-23} \text{ Joules}/ \text{degree Kelvin}$.
+
+Let us call entropy defined by the integral formula [eqref def-clausius-entropy] the [term Clausius entropy], and let us call the entropy defined by [eqref def-boltzmann-entropy] the [term Boltzmann entropy], writing them as $S_C$ and $S_B$ when necessary to distnguish them.  Boltzmann showed that the notions give the
+same result:
+
+|| equation
+S_B = S_C
+
+See section [ref boltzmann-entropy] for his argument. See also
+section  [ref entropy-of-quantum-systems], where we study
+quantum-mechanical systems, e.g., an ensemble of identical
+harmonic oscillators.  For quantum systems, counting 
+microstates is far simpler.
+
+Boltzmann's work was revolutionary.  He established
+a connection between the microscopic macroscopic scales,
+by showing that the Clausius' notion of entropy was
+a consequence of the atomic theory.  His definition 
+of entropy gave an elementary explanation of the 
+second law of thermodynamics.  In its classical formulation,
+this law state that heat flows from hot to cold, never from 
+cold to hot.  One can restate it by saying that in an isolated
+system, the entropy can only increase with time.  Consider, for example, a gas confined to the left half of a container,
+as in the figure below.  To left of the partiion is the gas.
+To the right is a vacuum.  When the partition is removed,
+the gas expands to fill the container. When the gas expands,
+there is no change in the velocities of the gas molecules. 
+However, each dimension of the original subboxes increases
+by a factor of two, so if we again partition phase space
+into subboxes of the same volume, each original subbox
+gives rise to $2^{3N}$ subboxes.  Consequently the new multiplicty
+$\Omega'$ is $2^{3N}$ times large than the old multiplicty $\Omega$:
+
+|| equation
+\Omega' = 2^{3N}\Omega .
+
+It follows that $S'  \approx S + 2k_BN$. Assuming that our system is at least as big as a raindrop, we find
+
+|| equation
+S' > 10^{20} + S
+
+Thus not only does entropy increase, but the increase is
+huge.
+
+There is nothing in the laws of mechanics that prohibits the now 
+expanded gas from gathering once again in the left-hand side
+of the box.  However, the number of microstates corrsponding to
+this posibility is $\Omega$ whereas the number of microstates
+for the expanded gas is $2^{3N}\Omega$.  The ratio of the 
+former to the latter is a tiny number:
+
+|| equation
+\frac{\Omega}{\Omega'} = \frac{1}{2^{3N}} \le \frac{1}{8^{10^{20}} }
+
+Because all microstates belonging to a given macrostate are equally probable, this computation shows that spontaneous reassmbly of the molecules on the left side of the container is exceedingly unlikely. Indeed, this phenomenon has never been observed.
+
+FIGURE
+
+
+
+
+
+
+
+
+# Heat Engines
+
+[image https://media.sciencephoto.com/c0/22/90/50/c0229050-800px-wm.jpg width:300 Newcomen Engine, 1712]
+
+
+The notion of entropy stems from the observation that
+early steam engines were grossly inefficient. The route
+from steam engine to entropy is not at all obvious;
+it played out over a period of roughly two centuries
+
+
+Let us begin with steam engines.  The first one to do
+real work was the Newcomen engine, invented in 1712. 
+It  had an estimated efficiency of only 0.2%. [cite NE]
+
+Although the efficiency of such engines soon improved, a puzzle 
+remained. Where did the "lost" energy go? Was it possible to 
+design an engine that was 100% efficient?
+
+The Newcomen engine
+and its successors convert heat
+generated by burning wood or coal into mechanical energy,
+perhaps  driving a pump to raise water from a well. In the
+Newcomen engine, burning coal heated water (A) producing steam
+which was then admitted the chambern (C) in which 
+a piston (D) moves.  The pressure in the chamber raises
+the piston, lowering the rocker arm (EFE).  When the rocker
+arm reaches its lowest point, the steam valve (I) is closed
+and the valve (N) is opened, spraying water into the chamber.
+The steam condenses, creating a partial vacuum which pulls
+the piston down, raising a load via the cable (H) attached 
+to the rocker arm. The exhaust valve (J) is opened so that
+the water vapor can exit the chamber.  This completes one cycle
+of the engine.  Important here two [term heat reservoits],
+one held at a "high" temperature $T_H$, the other at a 
+"cold" temperature $T_C$.  For the Newcomen engine, the
+hot reservoir is the steam chamber (A) and the cold 
+reservoir is the atmosphere.  The corresponding temperature
+are $T_H = 100 \degree C$ and $T_H = 22 \degree C$. 
+
+
+What is relevant for our discussion, however, are the 
+[term absolute temperatures].  The absolute temperature
+is like the Centigrade temperature, except that absolute
+zero (degrees Kelvin) corresponds to $-273.16 \degree C$.  
+At absolute zero, all molecular motion ceases — except
+for  small residual movements required by quantum 
+mechanics (the Heisenberg uncertainty principle).
+
+We can now state Carnot's discovery: 
+
+|| equation
+\text{efficiency} \le 1 - \frac{T_C}{T_H}
+
+In the case of the Newcomen engine $T_H = 373 \degree K$ and
+$T_C = 351 \degree K$, so the maximum efficiency is $0.21$ or 
+21%.  By raising the hot reservoir temperature to $200 \degree C = 463 \degree K$, the theoretical efficiency rises to 37.6%. By the ideal gas law $PV = nRT$, raising the steam temperature requires
+raising the steam pressure.  This is something that the 
+inventors and engineers had already discovered empirically.
+
+
+# Carnot
+
+The road to Carnot's efficiency formula begins with the 
+observation that the work performed in one cycle of a 
+heat engine is
+
+|| equation
+W = Q_H - Q_C
+
+where $Q_H$ is the heat absorbed from the hot reservoir
+and $Q_C$ is the heat expelled to the cold reservoir.
+This is simply conservation of energy. To run the engine
+through one cycle, we must pay an energy cost of $Q_H$
+to produce $W$ units of work.  The efficiency is therefore
+the ratio $W/Q_H$:
+
+|| equation
+  \text{efficiency} = 1 - \frac{Q_C}{Q_H}
+
+## Reversibility
+
+The previous formula is correct, but not very useful: the quantities
+$Q_H$ and $Q_C$ are difficult to measure.  
+
+To go further,
+Carnot introduced the idea of a [term reversible heat engine].
+The usual mode of operation of a heat engine is to consume
+heat and produce mechanical energy.  However, such an engine
+can also be run in reverse, consuming mechanical energy and 
+producing heat. Let us connect the output such a machine to 
+the input of a copy of the same machine running in reverse:
+
+
+$$
+\text{Heat}_{\text{in}} \to M \to \text{Work} \to M_{\text{reversed}} \to \text{Heat}_\text{out}
+
+We say that $M$ is reversible if $\text{Heat}_{\text{in}} =
+\text{Heat}_{\text{out}}$.  One can also speak of a [term reversible process].  The usual way of explaining this
+is to say that the process takes place through a sequence
+of infinitesimal changes, each one of which can be undone by making the the corresponding inverse change. 
+
+Let us look
+at the example of expanson/compression of a gas, but
+without mentioning infinitesimals. Every $\Delta t$ seconds the volume of the gas increases by an amount $\Delta V$, and 
+the gas performs an amount of work $\Delta W = p\Delta V$ as
+indicated in the figure below.  The total work is the total
+area of the inscribed rectangles.  For compression, the total
+work is the corresponding sum of the areas of the circumscribed
+rectangles.  Observe that the work needed to re-compress
+the gas to its original state is alwyas greater than the work
+performed by the expanding gas.  However as $\Delta V$ gets
+smaller and smaller, the discrepancy between the work performed by the expanding gas and the work needed to re-compress it
+becomes smaller and smaller. It is in this sense that a 
+reversible process is one that proceeds by infinitesimal steps.
+Processes of this kind are often called [term quasistatic], since
+at each instant of the process the system is very close to equilibrium.
+
+
+
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/d4c86a2a-6c3d-4190-63f5-f723aaa9ca00/public width:300]
+
+## The Carnot cycle
+
+
+The [term Carnot cycle] is a sequence of four quasi-static 
+processes that describe the operation of an idealized heat 
+engine.  The are as follows:
+
+. Isothermal expansion from $a$ to $b$.  During this process,
+the working fluid is in contact with the hot reservoir
+at temperature $T_H$.  The working fluid absorbs 
+an amount of heat $Q_H$.
+
+. Adiabatic expansion from $b$ to $c$.  During this process,
+the working fluid is insulated and neither absorbs nor loses heat.
+However, it continues to expand until it reaches the temperature
+$T_C$ of the cold reservoir.
+
+. Isothermal compression from $c$ to $d$. During this 
+process, the working fluid is contact with the cold reservoir
+at temperature $T_C$. Heat passes from the working fluid
+to the cold reservoir.
+
+. Adiabatic compression from $d$ to $a$.  The working 
+fluid is forcibly compressed until its volume returns to 
+the initial volume.
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/1d7b724d-1f85-4613-399a-a5723711a500/public Carnot Cycle width:300]
+
+
+Assuming that the working fluid is an ideal gas, let us
+compute the amount of heat gained or lost in the isothermal
+processes 1 and 3.  From the definition of work and ideal gas law,
+
+$$
+dW = pdV = nRT \frac{dV}{V}
+
+The work done by the gas as it expands from volume $V_a$ to
+volume $V_b$ is therefore
+
+|| equation
+W =  nRT \int_a^b \frac{dV}{V} = nRT\log(V_b/V_a) 
+
+In isothermal expansion there is no change in internal
+energy: recall that by kinetic theory of gases
+the average kinetic energy of a molecule is $\frac{3}{2} k_B T$.
+Since the change in internal energy is the same as the heat 
+absorbed by the gas  minus the  work it performs, we have
+
+|| aligned
+\label{heat-q-h-c}
+Q_H = nRT_H\log(V_b/V_a) \\
+Q_C = nRT_C\log(V_d/V_c)
+
+Recall the adiabatic equations:
+
+|| aligned
+T_H V_b^{\gamma - 1} = T_C V_c^{\gamma - 1}  \\
+T_C V_a^{\gamma - 1} = T_H V_d^{\gamma - 1} 
+
+Dividing one of these by the other, we find that
+
+|| equation
+\frac{V_b}{V_a} = \frac{V_c}{V_d}}
+
+Then 
+
+|| aligned
+Q_C  &= nRT_C \log\left(\frac{V_c}{V_d}\right) \\
+&= nRT_C \log\left(\frac{V_b}{V_a   }\right)
+&= T_C \frac{Q_H}{T_H}
+
+
+It follows that
+
+|| equation
+\frac{Q_H}{{T_H}} = \frac{Q_C}{T_C}}
+
+
+An immediate consequence is that the efficiency of a
+Carnot engine is given by
+
+|| equation
+\text{efficiency}_{\text{Carnot}} = 1 - \frac{T_C}{T_H}
+
+In the next section we give Carnot's argument that no heat engine 
+is as efficient as a Carnot engine.  Thereore
+
+|| equation
+\text{efficiency}\le 1 - \frac{T_C}{T_H}
+
+for all heat engines.
+
+## Carnot Inequality
+
+Consider an standard-issue reversible heat engine
+$M$ with parameters $(Q_H, Q_C)$ where $Q_C < Q_H$.
+In each cycle, such a machine ingests $Q_H$ units 
+of heat at temperature $T_H$, expels $Q_C$ units
+at temperature $T_C$. The amount of work produced
+per cycle is $W = Q_H - Q_C$. Consider a second
+machine $M^+$ which is more efficient than $M$
+and which also ddumps $Q_C$ units of heat per cycle in the
+cold reservoir. Then it has parameters $(Q_H + \Delta, Q_C)$  for some $\Delta >e 0$.
+ Join the two machines together by sending $W$ units of work per cycle from $M^+$ to machine $M$
+running in reverse.  Call this machine $M'$. In each cycle it
+
+. Does nothing to the cold reservoir.
+
+. Consumes $\Delta$ units of heat from the hot
+ reservoir.
+
+. Produces $\Delta$ units of work.
+
+
+We claim that such a machine violates the second
+law of thermodynamics. Consequently 
+
+
+To see this, pipe the work
+of our compound machine into a Carnot refrigerator $R$
+with parameters $(Q_{C'} + \Delta, Q_{C'})$. The new compound machine $M''$ does the following in each cycle:
+
+. Consumes $Q_{C'}$ units of heat from the cold reservoir.
+
+. Dumps $Q_{C'}$ units of heat into the hot reservoir
+
+. Neither produces nor consumes work.
+
+This is in violation of the second law of thermodynamics,
+which states that heat flows from hot to cold.
+
+| exercise
+Show that if you can construct the machine $M''$, then
+you can also construct a perpetual motion machine.
+
+
+# Clausius Entropy
+
+
+A thermodynamic system at equilibrium is completely described
+by its [term state variables].  In the case of an ideal gas
+consising of $n$ moles, the pressure, volume, and temperature
+are state variables.  The are not independent, as we know from
+the ideal gas law:
+
+|| equation
+PV = nRT
+
+where $R = 8.31 \text{ Joule-moles}/\degree K$
+ the [term gas constant] and $T$ is the 
+absolute temperature. In 1865, the German physicist Rudolf
+Clausius discovered a new state variable, the [term entropy]. The entropy provides a quantitative understanding of the second law of thermodynamics,
+that heat always flows from hot to cold.
+Entropy is closely related to the quantity $Q/T$ which we
+encountered when studying the Carnot cycle.
+
+
+
+Let us begin by asking a naive question: can we assign 
+an amount of heat to a particular state of the gas,
+given as a point in the $(V,P)$ plane.  Suppose for amoment
+that this is true.  The the amount of heat at point $c$ in the
+figure below can be calculated from the amount of heat
+at $a$ plus the change in the heat as we go from $a$ to
+$c$ along some path.  The red paths in the are isotherms (change
+of volume occurs at constant temperature) while the blue
+paths are adiabats (no heat is gaines or lost. 
+
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/6b627db2-fcdf-4e36-1cba-68683a976d00/public width:180]
+
+In panel 1, 
+an amount $Q_H$ is gained as the system moves from $a$ to $b$
+and then to $c$. In panel 1, an amount $Q_C$ is gained.
+Since these paths are part of the Carnot cycle pictured
+in panel 1, we know that 
+
+|| equation 
+\frac{Q_H}{T_H} = \frac{Q_C}{T_C}
+
+Since 
+
+$$
+  Q_H = \frac{T_H}{T_C} Q_C,
+
+we know that $Q_H > Q_C$.  Therefore more heat is added
+along the path $abc$ than along the path $adc$.  
+Consequently the notion "heat at a point $(V,P)$" is not 
+well-defined.  
+
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/27575d39-1958-412c-e46c-9965d4434a00/public]
+
+
+
+
+
+
+There is, however, a quantity, the [term change in entropy]
+that we can assign to any isotherm:
+
+|| equation 
+\label{delta-s}
+\Delta S(\text{isotherm}) = \frac{Q(\text{isotherm})}{T(\text{isotherm})}
+
+Although we have not yet defined the entropy, the
+change in entroy along an isotherm as given by 
+[eqref delta-s] is perfectly well-defined.
+
+If $ab$ and $dc$ are isotherms that form part
+of Carnot cycle, as in the figure above, we know 
+that $\Delta S(ab) = \Delta S(dc)$. Since there is no
+heat transfer along an adiabat, it makes sense to define
+$\Delta S = 0$ for these.  We define the change in entropy
+for the path $abc$ to be
+
+|| equation
+\Delta S(abc) = \Delta S(ab) + \Delta S(bc)
+
+Suppose now that we have a path $\gamma = abcde \ldots$ whose
+pieces $ab$, $bc$, $cd$, $\ldots$ are either isotherms
+or adiabats. We define the change in entropy for
+$\gamma$ in the same way, by adding up the changes
+of the individual arcs.
+
+Let $\tilde \gamma$ be the path $\gamma$ traversed in the 
+opposite direction.  Then $\Delta(\tilde\gamma) = -\Delta(\gamma)$. Now the path $abcda$ is a Carnot cycle, and
+we have
+
+|| aligned
+\Delta S(abcda) &= \Delta S(ab) + \Delta S(bc)  + \Delta S(cd) + \Delta S(da) \\
+ &= \Delta S(ab)  + \Delta S(cd) \\
+ &= 0
+
+This is an important fact:
+
+| theorem
+The change in entropy for a Carnot cycle $\gamma$ is zero: 
+$\Delta S(\gamma) = 0$.
+
+We are heading towards a major result:
+
+| theorem
+Let $\gamma$ be any closed path in V-P space. If it is 
+reversible, then $\Delta S(\gamma) = 0$.  If it is not
+reversible, then $\Delta S(\gamma) > 0$.
+
+This last result is a quantitative version of the 
+Second Law of Thermodynamics.  It is what Clausius
+was looking for.
+
+Consider now apath
+$\gamma = a_1a_2 \ldots a_n$
+consisting of isotherms and adiabats joined end-to-end.
+We'll call these [term Carnot paths], and we will define
+a quantity $\Delta S(\text{Carnot path})$ adding up the  
+$\Delta S$'s for  the individual isotherms and adiabats. 
+
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/3ef733eb-e25c-49d0-8132-1e111aee6e00/public Carnot paths]
+
+This quantity has a remakable property"
+
+| theorem
+If $\gamma$ and $\gamma'$ are Carnot paths leading from $x$ to $y$
+in the $(P,V)$, then $\Delta S(\gamma) = \Delta S(\gamma')$.
+
+As a special case consider the Carnot cycle $abcd$ of panel 1 and the 
+paths $\gamma = abc$ and $\gamma' = adc$.  Then 
+$\Delta S(\gamma) = \Delta S(\gamma')$ is just the relation
+
+$$ 
+\frac{Q_H}{T_H} = \frac{Q_C}{T_C}.
+
+
+
+Consider now the two
+paths $aedgc$ and $aefgc$ panel 4.  Then
+
+|| aligned
+\Delta S(aedgc) &= \Delta S(ae) + \Delta S(ed) + \Delta S(dg) + \Delta S(gc)
+&=  \Delta S(dg) + \Delta S(gc)
+
+where we elimintate the adiabats, and 
+
+|| aligned
+\Delta S(aefgc) &=  \Delta S(ae) + \Delta S(ef) + \Delta S(fg) + \Delta S(gc)
+&=   \Delta S(ef) +  \Delta S(gc)
+
+and so
+
+|| aligned
+\Delta S(aefgc) - \Delta S(aedgc) &= \Delta S(ef)  - \Delta S(dg)
+&= 0
+
+since $efgd$ is a Carnot cycle.
+
+
+
+
+
+
+
+The quantity $\Delta S(\gamma)$ is defined to be the [term change
+in entropy] along the path $\gamma$.   As for the entropy itself,
+the best we can do for now is define it to be some arbitrary value 
+$S_0$
+at some point $(V_0, P_0)$ in the V-P plane and define it 
+to be be $S_0 + \Delta S(\gamma)$ for any Carnot path  from $(V_0, P_0)$
+to the given path.  This defintion makes sense by virtue of the
+theorem: any two Carnot paths between the give points yields the 
+same answer.
+
+There is one more fact that we can glean from the figure above.  Panel
+5 is an example of how an arbitrary path from $a$ to $c$ can be
+approximated by a Carnot path.   ...
+
+
+## Reversible processes
+
+
+Let us consider once again the process of quasi-static
+isothermal compression/expansion.  The entropy change for 
+isothermal compression is 
+
+|| equation
+\Delta S_c(n) = \sum_i^n \frac{\Delta Q_{c,i}}{T}
+
+and for expansion it is
+
+
+|| equation
+\Delta S_e(n) = \sum_i^n \frac{\Delta Q_{e,i}}{T}
+
+From the figure below, we see that 
+
+|| equation
+\Delta S_{e,i}= \Delta S_{c,i} + \delta_i,
+
+where $\delta_i$ is a small quantity.  Therefore
+
+|| equation
+\Delta S_e(n) - \Delta S_c (n)= \frac{1}{T}\sum_i^n \delta_i
+
+As we from the diagram, the sum of the $\delta_i$ is a
+quantity that tends to zero as $n$ tends to infinity,
+so that
+
+|| equation 
+\Delta S_e - \Delta S_c = \lim_{t \to \infty}(\Delta S_e(n) - \Delta S_c (n)) = 0.
+
+Therefore 
+
+|| equation
+\Delta S_e = \Delta S_c
+
+
+More generally: 
+
+| theorem
+[i The change in entropyof a cyclic reversible process is zero.]
+
+
+[vspace 20]
+
+[image https://imagedelivery.net/9U-0Y4sEzXlO6BXzTnQnYQ/d4c86a2a-6c3d-4190-63f5-f723aaa9ca00/public width:300]
+
+
+## Irreversible Processes
+
+We bake a loaf of bread and set it on the kitchen counter
+to cool.  From a practical standpoint, this is an irreversible
+process.  The bread gradually cools, eventually reaching room
+temperature.  No one has ever seen the reverse process: a loaf
+of bread at room temperature that gradually becomes hotter 
+and hotter.  Indeed: the second law of thermodynamics says
+that heat always flows from hot to cold.  In short, the 
+cooling of a hot object is an irreversible process.
+
+Using entropy, we can understand irreversibility and give it quantitative form. Let $T_{\text{hot}}$ be the temperature of the 
+loaf of bread when we take it out of the oven.  Let 
+$T_{\text{cold}}$ be the temperature of the kitchen.  Let $Q$ be 
+the amount of heat transferred from the bread to the kitchen
+after one hour.  The change in entropy is 
+
+|| equation 
+\Delta S = \frac{Q}{T_{\text{cold}}} - \frac{Q}{T_{\text{hot}}} > 0
+
+
+
+# Boltzmann Entropy
+
+The entropy as defined by Clausius is stated in terms of 
+temperature and heat transfer.  Ludwig Boltzmann, a German
+physicist of the latter part of the nineteenth century
+sought a formulation in terms of atomic theory.  
+This he found
+in 1877. His idea was based on the notion of [term phase space].
+The state of system of $N$ particles is given by $6$ numbers
+for each particle — three for the $x$, $y$, $z$ of 
+position and three more, $v_x$, $v_y$, $v_z$ for velocity.
+Thus the state of the system is given by a point in a $6N$-dimensional space, the phase space.  As time passes, the state of the system changes, tracing out a path in phase space.
+This path has certain limits imposed by the state variables of 
+the system.  For example, the system may be a gas confined to a box of dimensions $0 \le x \le L$, $0 \le y \le L$, $0 \le z \le L$.
+Let us consider for the moment a system in which we only 
+account for volume, not velocity or something else. Then the 
+phase trajectory lies entirely with a box of volume $V = L^3$.
+
+Suppose that our box occupies the left-hand half a larger box of dimentson $2L \times L \times L$, as in figure XX below. The left and right hand sides are separated by a 
+partition.  When we remove it, the gas, which formerly
+occupied a volume V_1 = $L^3$, expands to occupy 
+a volume $V_2 = 2L^3$.  From  [eqref heat-q-h-c], 
+it follows that the resutling
+entropy change from this "free expansion" is 
+
+|| equation
+\label{delta-s-c}
+\Delta S_C =  nR \log (V_2/V_1) 
+
+where $n$ is  the number of moles of gas, $R$ is the
+gas constant, and $S_C$ is the Clausius entropy.
+
+Now consider the phase space picture. The region 
+$\Omega$ of phase
+space accessible to the system has volume $V^{m}$ where $m$
+in the number of molecules.  Let us define the Boltzmann
+entropy by
+
+|| equation
+S_B = k_B \log \text{volume}(\Omega)
+
+for a suitable constant $k_B$ which we will choose in a
+moment.  Then
+
+|| equation
+S_B = mk_B\log(V)
+
+where $V$ is the volume ofthe region in Cartesian space
+to which the molecules are confined.  The entropy change then 
+
+|| equation
+\label{delta-s-b}
+\Delta S_B = mk_B\log(V_2/V_1)
+
+Now $m = nN_A$, where $n$ is amount of gas in moles and 
+$N_A$ is Avogadro's number.  Set $\Delta S_C = \Delta S_B$ 
+and compare using [eqref delta-s-c] and [eqref delta-s-b].  
+Equality holds if $nR = nN_Ak_B$, so
+
+|| equation
+k_B = R/N_A
+
+This constant is now known as Boltzmann's constant:
+
+|| equation
+k_B = 1.38 \times 10^{-23} \text{ Joules}/ \text{degree Kelvin}
+
+To summarize:
+
+| indent
+[italic If we take $S_B = k_B\log{\Omega}}$ with $k_B$ as 
+above, then the Clausius and Boltzmann entropies coincide.]
+
+
+#  Entropy of Quantum Systems
+
+Let us suppose now that the our systems are such that
+the macrostate is given by energy and that one can enumerate microstates $\Omega(E)$ of the system for a given energy.  
+Consider, for example, as system of $N$ harmonic oscillators,
+each of which has energy $\hbar \omega n$ where $n$ is a non-negative integer. A microstate is given by quantum numbers
+$(q_1, q_2, \ldots, q_N)$.  Let $q = q_1 + .. + q_N$ be
+the total quantum number of the system.  Then the 
+energy is $E(q) = \hbar \omega q$ and the number of 
+microstates is the multinomial coefficient
+
+|| equation
+\Omega(q) = \frac{q!}{q_1! \cdots q_N!}
+
+
+Suppose next that we have two systems $A$ and $B$ as in the figure below.
+Write the number of states in each as $\Omega_A(E_A)$, $\Omega_B(E_B)$, 
+and suppose that the total energy $E = E_A  + E_B$ is fixed.  Let
+$\Omega_{AB} = \Omega_A(E_A)\Omega_B(E_B)$ be the the multiplicity of
+the composite system.  Because the total energy is fixed, we may view
+it as a function of $E_A$.  
+
+
+Define the "combinatorial entropy" of system to be
+
+|| equation
+\sigma(E) = \log \Omega(E)
+
+It is an additive function in the sense that $\sigma_{AB} = \sigma_A + \sigma_B$. Now consider the ensemble of microstates corresponding to maximum
+entropy.  It corresponds to equiibrium (XXX).  At maximum entropy
+the derivative of the multiplicity with respect to $E_A$ 
+vanishes.  Equivalently, the derivative of the logarithm vanishes.
+
+
+|| equation
+\frac{d\sigma_{AB}(E_A)}{dE_A} = 0
+
+Since the entropy is additive,
+
+|| equation
+\frac{d\sigma_{A}(E_A)}{dE_A} + \frac{d\sigma_{B}(E_B)}{dE_A} = 0.
+
+Since the sum of the energies is constant, $d/dE_B = - d/dE_A$,
+we can rewrite this as
+
+
+|| equation
+\frac{d\sigma_{A}(E_A)}{dE_A} = \frac{d\sigma_{B}(E_B)}{dE_B}
+
+Because this is the condition for thermal equilibrium, the 
+quantity
+
+|| equation
+\frac{d\sigma}{dE}
+
+qualifies as a measure of temperature.  Indeed, if $T$ is
+the conventional temperature in degrees Kelvin, then
+
+|| equation
+\frac{d\sigma}{dE} = f(T)
+
+where $f$ is a monotone function whose values are in units of 
+inverse Joules. 
+
+
+Just as $d\sigma/dE = f(T)$ is a measure of temperature,
+so is $dE/d\sigma = 1/f(T)$.  When we heat a gas, its energy
+increases due to the increased kinetic energy of its constituent
+moleculues. Therefore $dE/d\sigma$ must be an increasing function
+of $T$.  Since the units of $T$ are degrees Kelvin, the only
+possibility is
+
+|| equation
+1/f(T) = k_BT
+
+for some constant $k_B$ that has units Joules/Kelvin.
+This is [term Boltzmann's constant],
+
+|| equation
+k_B = 1.38\times 10^{-23} \text{J}/\text{K}
+
+We conclude that 
+
+
+|| equation
+\frac{d\sigma(E)}{dE} = \frac{1}{k_BT}
+
+
+XXX FIGURE XXX
+
+# Comparing Entropies
+
+Let us rescale the combinatorial entropy, writing
+
+|| equation
+S_c = k_B\sigma
+
+so that 
+
+|| equation
+\label{approx-s-over-q}
+\frac{dS_c}{dE} = \frac{1}{T}
+
+By the usual approximation argument in calculus,
+
+|| equation
+\frac{\Delta S_c}{\Delta E} \approx \frac{1}{T}
+
+for small increments of energy $\Delta E$.  Assuming that
+no work is done on or by the system, small increments of energy 
+are small increments of heat, which is also a form of energy: $\Delta E = \Delta Q$. Then [eqref approx-s-over-q] reads
+
+|| equation
+\Delta S_c \approx \frac{\Delta Q}{T}
+
+Adding up small increments of combinatorial entropy and going 
+to the limit as the increment in energy goes to zero, we have
+
+|| equation
+S_c(\text{final}) - S_c(\text{initial}) = \int \frac{dQ}{T}
+
+We conclude that the rescaled combinatorial entropy and the
+Clausius entropy are the same.
+
+# References
+
+
+[b References]
+
+[bibitem F] [link Michael Fowler's Home page https://galileo.phys.virginia.edu/~mf1i/home.html]
+
+[bibitem F1] [link Fowler, Heat Engines: The Carnot Cycle https://galileo.phys.virginia.edu/classes/152.mf1i.spring02/CarnotEngine.htm]
+
+[bibitem F2] [link Fowler, Laws of Thermodynamics https://galileo.phys.virginia.edu/classes/152.mf1i.spring02/LawsThermo.htm]
+
+[bibitem F3] [link Fowler, A New Thermodyamic Quantity: Entropy https://galileo.phys.virginia.edu/classes/152.mf1i.spring02/Entropy.htm]
+
+[bibitem NE] [link Newcomen Engine (Wikipedia) https://en.wikipedia.org/wiki/Newcomen_atmospheric_engine]
+
+[bibitem WA] [link Watt Engine (Wikipedia) https://en.wikipedia.org/wiki/Watt_steam_engine]
+
+[bibitem UH] [link High Pressure Steam Engines]
+
+[bibitem SE] [link Steam Engine — How Does it Work (Youtube) https://www.youtube.com/watch?v=fsXpaPSVasQ]
+
+
+|| mathmacros
+\newcommand{\phase}{\mathcal{P}}
+

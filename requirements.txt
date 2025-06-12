@@ -1,0 +1,9 @@
+sentence-transformers
+numpy
+click
+pydantic
+chromadb
+sqlalchemy
+fastapi
+uvicorn
+httpx
