@@ -2,6 +2,10 @@
 
 A semantic document search system with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB. Now includes Claude AI integration for intelligent conversations that can be saved as searchable documents.
 
+# TODO
+
+- Add integration with other AI's
+
 ## Installation
 
 ### Prerequisites
