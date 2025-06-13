@@ -131,6 +131,7 @@ The Elm web application provides:
 - **Documents** - View all documents in the system
 - **Add Document** - Create new documents with title, content, and type
 - **Random** - Display 10 random documents from your collection
+- **Clusters** - Group documents by semantic similarity using K-means clustering
 - **Stats** - View system statistics
 - **Search** - Semantic search across all documents
 - **Edit/Delete** - Full document management capabilities
@@ -141,13 +142,28 @@ The Elm web application provides:
 1. Click the "Ask Claude" button in the navigation bar
 2. Enter your prompt in the text area
 3. Click "Send to Claude" to submit your question
-4. Claude's response will be automatically saved as a new document
-5. The response appears in Markdown format and is fully searchable
+4. Review Claude's response
+5. Choose to either:
+   - Click "Save" to save the response as a searchable document
+   - Click "New Question" to discard and ask another question
+6. After saving, you'll see an "Ask another question" button for easy continuation
 
 Example prompts:
 - "Explain how vector databases work"
 - "Write a Python function to calculate fibonacci numbers"
 - "What are the benefits of functional programming?"
+
+#### Using Document Clustering
+
+1. Click the "Clusters" button in the navigation bar
+2. The system automatically groups your documents based on semantic similarity
+3. Each cluster shows:
+   - Cluster number and size (e.g., "1. Machine Learning (5/21)")
+   - Auto-generated name based on common themes
+   - Representative document (closest to cluster center)
+   - List of all documents in the cluster
+4. Click any document title to view it
+5. The silhouette score indicates clustering quality (-1 to 1, higher is better)
 
 ### Command Line Interface
 
@@ -229,6 +245,7 @@ lu show 5
 - **Document Management**: Create, read, update, and delete documents
 - **Markdown Support**: Full Markdown rendering in the viewer
 - **Claude AI Integration**: Ask questions to Claude and save responses as searchable documents
+- **Document Clustering**: Automatically group documents by semantic similarity using K-means clustering
 
 ## Technology Stack
 

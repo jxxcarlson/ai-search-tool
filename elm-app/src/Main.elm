@@ -33,6 +33,10 @@ type alias Model =
     , randomDocuments : List Document
     , claudePrompt : String
     , claudeLoading : Bool
+    , claudeResponse : Maybe Document
+    , justSavedClaude : Bool
+    , clusters : Maybe ClusterResponse
+    , clusterLoading : Bool
     }
 
 
@@ -59,6 +63,7 @@ type View
     | StatsView
     | RandomView
     | ClaudeView
+    | ClustersView
 
 
 type Msg
@@ -94,6 +99,11 @@ type Msg
     | UpdateClaudePrompt String
     | SendClaudePrompt
     | ClaudeResponseReceived (Result Http.Error Document)
+    | SaveClaudeResponse
+    | NewClaudeQuestion
+    | LoadClusters
+    | GotClusters (Result Http.Error ClusterResponse)
+    | SelectDocumentFromCluster String
 
 
 type alias Flags =
@@ -117,6 +127,10 @@ init flags =
       , randomDocuments = []
       , claudePrompt = ""
       , claudeLoading = False
+      , claudeResponse = Nothing
+      , justSavedClaude = False
+      , clusters = Nothing
+      , clusterLoading = False
       }
     , Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
     )
@@ -175,7 +189,7 @@ update msg model =
             )
 
         ChangeView newView ->
-            ( { model | view = newView }, Cmd.none )
+            ( { model | view = newView, justSavedClaude = False }, Cmd.none )
 
         DeleteDocument docId ->
             ( { model | loading = True }
@@ -185,7 +199,13 @@ update msg model =
         DocumentDeleted result ->
             case result of
                 Ok _ ->
-                    ( { model | loading = False, error = Nothing }
+                    ( { model 
+                        | loading = False
+                        , error = Nothing
+                        , selectedDocument = Nothing
+                        , view = ListView
+                        , justSavedClaude = False
+                      }
                     , Api.getDocuments model.config GotDocuments
                     )
 
@@ -393,18 +413,71 @@ update msg model =
                 Ok document ->
                     ( { model 
                         | claudeLoading = False
-                        , claudePrompt = ""
-                        , selectedDocument = Just document
-                        , view = DocumentView
+                        , claudeResponse = Just document
                         , error = Nothing
                       }
-                    , Api.getDocuments model.config GotDocuments
+                    , Cmd.none
                     )
 
                 Err error ->
                     ( { model | claudeLoading = False, error = Just (httpErrorToString error) }
                     , Cmd.none
                     )
+        
+        SaveClaudeResponse ->
+            case model.claudeResponse of
+                Just document ->
+                    ( { model 
+                        | claudePrompt = ""
+                        , claudeResponse = Nothing
+                        , selectedDocument = Just document
+                        , view = DocumentView
+                        , justSavedClaude = True
+                      }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+                
+                Nothing ->
+                    ( model, Cmd.none )
+        
+        NewClaudeQuestion ->
+            ( { model 
+                | claudePrompt = ""
+                , claudeResponse = Nothing
+              }
+            , Cmd.none
+            )
+        
+        LoadClusters ->
+            ( { model | clusterLoading = True, view = ClustersView }
+            , Api.getClusters model.config Nothing GotClusters
+            )
+        
+        GotClusters result ->
+            case result of
+                Ok clusterResponse ->
+                    ( { model 
+                        | clusterLoading = False
+                        , clusters = Just clusterResponse
+                        , error = Nothing
+                      }
+                    , Cmd.none
+                    )
+                
+                Err error ->
+                    ( { model | clusterLoading = False, error = Just (httpErrorToString error) }
+                    , Cmd.none
+                    )
+        
+        SelectDocumentFromCluster docId ->
+            case List.filter (\doc -> doc.id == docId) model.documents of
+                doc :: _ ->
+                    ( { model | selectedDocument = Just doc, view = DocumentView }
+                    , Cmd.none
+                    )
+                
+                [] ->
+                    ( model, Cmd.none )
 
 
 httpErrorToString : Http.Error -> String
@@ -452,6 +525,9 @@ view model =
 
             ClaudeView ->
                 viewClaude model
+                
+            ClustersView ->
+                viewClusters model
         ]
 
 
@@ -464,6 +540,7 @@ viewHeader model =
             , button [ onClick (ChangeView AddDocumentView), class "nav-button" ] [ text "Add Document" ]
             , button [ onClick (ChangeView ClaudeView), class "nav-button" ] [ text "Ask Claude" ]
             , button [ onClick LoadRandomDocuments, class "nav-button" ] [ text "Random" ]
+            , button [ onClick LoadClusters, class "nav-button" ] [ text "Clusters" ]
             , button [ onClick LoadStats, class "nav-button" ] [ text "Stats" ]
             ]
         , div [ class "search-bar" ]
@@ -566,17 +643,17 @@ viewDocument model =
                     if editing.id == doc.id then
                         viewEditingDocument editing
                     else
-                        viewReadOnlyDocument doc
+                        viewReadOnlyDocument model doc
 
                 Nothing ->
-                    viewReadOnlyDocument doc
+                    viewReadOnlyDocument model doc
 
         Nothing ->
             div [] [ text "No document selected" ]
 
 
-viewReadOnlyDocument : Document -> Html Msg
-viewReadOnlyDocument doc =
+viewReadOnlyDocument : Model -> Document -> Html Msg
+viewReadOnlyDocument model doc =
     div [ class "document-view" ]
         [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
         , h2 [] [ text doc.title ]
@@ -595,6 +672,16 @@ viewReadOnlyDocument doc =
             ]
         , div [ class "document-content" ]
             [ renderMarkdown doc.content ]
+        , if model.justSavedClaude then
+            div [ class "document-actions", style "margin-top" "2rem" ]
+                [ button 
+                    [ onClick (ChangeView ClaudeView)
+                    , class "submit-button"
+                    ] 
+                    [ text "Ask another question" ]
+                ]
+          else
+            text ""
         ]
 
 
@@ -720,34 +807,56 @@ viewClaude : Model -> Html Msg
 viewClaude model =
     div [ class "claude-view" ]
         [ h2 [] [ text "Ask Claude" ]
-        , div [ class "claude-form" ]
-            [ div [ class "form-group" ]
-                [ label [] [ text "Your prompt:" ]
-                , textarea
-                    [ value model.claudePrompt
-                    , onInput UpdateClaudePrompt
-                    , placeholder "Ask Claude anything..."
-                    , class "form-textarea"
-                    , rows 10
-                    , disabled model.claudeLoading
+        , case model.claudeResponse of
+            Just response ->
+                div []
+                    [ div [ class "claude-response" ]
+                        [ h3 [] [ text response.title ]
+                        , div [ class "document-content" ] [ renderMarkdown response.content ]
+                        , div [ class "form-actions" ]
+                            [ button
+                                [ onClick SaveClaudeResponse
+                                , class "save-button"
+                                ]
+                                [ text "Save" ]
+                            , button
+                                [ onClick NewClaudeQuestion
+                                , class "cancel-button"
+                                ]
+                                [ text "New Question" ]
+                            ]
+                        ]
                     ]
-                    []
-                ]
-            , button
-                [ onClick SendClaudePrompt
-                , class "submit-button"
-                , disabled (String.isEmpty model.claudePrompt || model.claudeLoading)
-                ]
-                [ if model.claudeLoading then
-                    text "Asking Claude..."
-                  else
-                    text "Send to Claude"
-                ]
-            , div [ class "claude-info" ]
-                [ p [] [ text "Claude will respond to your prompt and the conversation will be saved as a document." ]
-                , p [] [ text "You can then search, edit, or reference it like any other document." ]
-                ]
-            ]
+            
+            Nothing ->
+                div [ class "claude-form" ]
+                    [ div [ class "form-group" ]
+                        [ label [] [ text "Your prompt:" ]
+                        , textarea
+                            [ value model.claudePrompt
+                            , onInput UpdateClaudePrompt
+                            , placeholder "Ask Claude anything..."
+                            , class "form-textarea"
+                            , rows 10
+                            , disabled model.claudeLoading
+                            ]
+                            []
+                        ]
+                    , button
+                        [ onClick SendClaudePrompt
+                        , class "submit-button"
+                        , disabled (String.isEmpty model.claudePrompt || model.claudeLoading)
+                        ]
+                        [ if model.claudeLoading then
+                            text "Asking Claude..."
+                          else
+                            text "Send to Claude"
+                        ]
+                    , div [ class "claude-info" ]
+                        [ p [] [ text "Claude will respond to your prompt. You can then choose to save it as a document." ]
+                        , p [] [ text "Saved documents can be searched, edited, or referenced like any other document." ]
+                        ]
+                    ]
         ]
 
 
@@ -896,6 +1005,84 @@ formatPercent score =
         rounded = toFloat (round (percent * 100)) / 100
     in
     String.fromFloat rounded ++ "%"
+
+
+viewClusters : Model -> Html Msg
+viewClusters model =
+    div [ class "clusters-view" ]
+        [ h2 [] [ text "Document Clusters" ]
+        , if model.clusterLoading then
+            div [ class "loading" ] [ text "Analyzing document clusters..." ]
+          else
+            case model.clusters of
+                Just clusterResponse ->
+                    div []
+                        [ div [ class "cluster-info" ]
+                            [ p [] [ text ("Found " ++ String.fromInt clusterResponse.numClusters ++ " clusters") ]
+                            , p [] [ text ("Silhouette score: " ++ String.fromFloat (toFloat (round (clusterResponse.silhouetteScore * 100)) / 100)) ]
+                            ]
+                        , div [ class "clusters-grid" ]
+                            (List.map (viewCluster model) clusterResponse.clusters)
+                        ]
+                
+                Nothing ->
+                    div [ class "empty-state" ] [ text "No clusters loaded. Click 'Clusters' to analyze." ]
+        ]
+
+
+viewCluster : Model -> Cluster -> Html Msg
+viewCluster model cluster =
+    let
+        representativeDoc =
+            List.filter (\doc -> doc.id == cluster.representativeDocumentId) model.documents
+                |> List.head
+        
+        representativeTitle =
+            case representativeDoc of
+                Just doc ->
+                    doc.title
+                
+                Nothing ->
+                    "Unknown"
+        
+        totalDocs =
+            case model.clusters of
+                Just clusterResponse ->
+                    clusterResponse.totalDocuments
+                
+                Nothing ->
+                    0
+    in
+    div [ class "cluster-card" ]
+        [ h3 [] [ text (String.fromInt (cluster.clusterId + 1) ++ ". " ++ cluster.clusterName ++ " (" ++ String.fromInt cluster.size ++ "/" ++ String.fromInt totalDocs ++ ")") ]
+        , p [ class "cluster-representative" ] 
+            [ text ("Representative: " ++ representativeTitle) 
+            ]
+        , div [ class "cluster-documents" ]
+            [ h4 [] [ text "Documents:" ]
+            , ul []
+                (List.map viewClusterDocument cluster.documents)
+            ]
+        ]
+
+
+viewClusterDocument : ClusterDocument -> Html Msg
+viewClusterDocument doc =
+    li []
+        [ a 
+            [ href "#"
+            , onClick (SelectDocumentFromCluster doc.id)
+            , style "cursor" "pointer"
+            , style "color" "#2563eb"
+            ] 
+            [ text doc.title ]
+        , case doc.docType of
+            Just docType ->
+                span [ class "doc-type-badge" ] [ text (" (" ++ docType ++ ")") ]
+            
+            Nothing ->
+                text ""
+        ]
 
 
 renderMarkdown : String -> Html msg

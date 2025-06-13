@@ -6510,10 +6510,14 @@ var $author$project$Main$init = function (flags) {
 		{
 			claudeLoading: false,
 			claudePrompt: '',
+			claudeResponse: $elm$core$Maybe$Nothing,
+			clusterLoading: false,
+			clusters: $elm$core$Maybe$Nothing,
 			config: $author$project$Api$Config(flags.apiUrl),
 			documents: _List_Nil,
 			editingDocument: $elm$core$Maybe$Nothing,
 			error: $elm$core$Maybe$Nothing,
+			justSavedClaude: false,
 			loading: false,
 			newDocument: A3($author$project$Main$NewDocument, '', '', ''),
 			randomDocuments: _List_Nil,
@@ -6533,6 +6537,7 @@ var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $author$project$Main$ClaudeResponseReceived = function (a) {
 	return {$: 'ClaudeResponseReceived', a: a};
 };
+var $author$project$Main$ClustersView = {$: 'ClustersView'};
 var $author$project$Main$DocumentAdded = function (a) {
 	return {$: 'DocumentAdded', a: a};
 };
@@ -6547,6 +6552,9 @@ var $author$project$Main$EditingDocument = F4(
 	function (id, title, content, docType) {
 		return {content: content, docType: docType, id: id, title: title};
 	});
+var $author$project$Main$GotClusters = function (a) {
+	return {$: 'GotClusters', a: a};
+};
 var $author$project$Main$GotCurrentTime = function (a) {
 	return {$: 'GotCurrentTime', a: a};
 };
@@ -6676,11 +6684,90 @@ var $author$project$Api$deleteDocument = F3(
 				url: config.apiUrl + ('/documents/' + docId)
 			});
 	});
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $author$project$Models$ClusterResponse = F4(
+	function (clusters, numClusters, silhouetteScore, totalDocuments) {
+		return {clusters: clusters, numClusters: numClusters, silhouetteScore: silhouetteScore, totalDocuments: totalDocuments};
+	});
+var $author$project$Models$Cluster = F5(
+	function (clusterId, clusterName, size, documents, representativeDocumentId) {
+		return {clusterId: clusterId, clusterName: clusterName, documents: documents, representativeDocumentId: representativeDocumentId, size: size};
+	});
+var $author$project$Models$ClusterDocument = F4(
+	function (id, title, docType, createdAt) {
+		return {createdAt: createdAt, docType: docType, id: id, title: title};
+	});
+var $elm$json$Json$Decode$map4 = _Json_map4;
+var $author$project$Models$clusterDocumentDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Models$ClusterDocument,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'title', $elm$json$Json$Decode$string),
+	$elm$json$Json$Decode$maybe(
+		A2($elm$json$Json$Decode$field, 'doc_type', $elm$json$Json$Decode$string)),
+	$elm$json$Json$Decode$maybe(
+		A2($elm$json$Json$Decode$field, 'created_at', $elm$json$Json$Decode$string)));
+var $elm$json$Json$Decode$map5 = _Json_map5;
+var $author$project$Models$clusterDecoder = A6(
+	$elm$json$Json$Decode$map5,
+	$author$project$Models$Cluster,
+	A2($elm$json$Json$Decode$field, 'cluster_id', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'cluster_name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'size', $elm$json$Json$Decode$int),
+	A2(
+		$elm$json$Json$Decode$field,
+		'documents',
+		$elm$json$Json$Decode$list($author$project$Models$clusterDocumentDecoder)),
+	A2($elm$json$Json$Decode$field, 'representative_document_id', $elm$json$Json$Decode$string));
+var $elm$json$Json$Decode$float = _Json_decodeFloat;
+var $author$project$Models$clusterResponseDecoder = A5(
+	$elm$json$Json$Decode$map4,
+	$author$project$Models$ClusterResponse,
+	A2(
+		$elm$json$Json$Decode$field,
+		'clusters',
+		$elm$json$Json$Decode$list($author$project$Models$clusterDecoder)),
+	A2($elm$json$Json$Decode$field, 'num_clusters', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'silhouette_score', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'total_documents', $elm$json$Json$Decode$int));
+var $author$project$Models$encodeClusterRequest = function (numClusters) {
+	if (numClusters.$ === 'Just') {
+		var n = numClusters.a;
+		return $elm$json$Json$Encode$object(
+			_List_fromArray(
+				[
+					_Utils_Tuple2(
+					'num_clusters',
+					$elm$json$Json$Encode$int(n))
+				]));
+	} else {
+		return $elm$json$Json$Encode$object(_List_Nil);
+	}
+};
+var $author$project$Api$getClusters = F3(
+	function (config, numClusters, msg) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$jsonBody(
+					$author$project$Models$encodeClusterRequest(numClusters)),
+				expect: A2($elm$http$Http$expectJson, msg, $author$project$Models$clusterResponseDecoder),
+				url: config.apiUrl + '/clusters'
+			});
+	});
 var $author$project$Models$Stats = F5(
 	function (totalDocuments, embeddingDimension, model, storageLocation, chromaCollectionCount) {
 		return {chromaCollectionCount: chromaCollectionCount, embeddingDimension: embeddingDimension, model: model, storageLocation: storageLocation, totalDocuments: totalDocuments};
 	});
-var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Models$statsDecoder = A6(
 	$elm$json$Json$Decode$map5,
 	$author$project$Models$Stats,
@@ -6772,7 +6859,6 @@ var $author$project$Models$SearchResult = F7(
 	function (id, title, content, createdAt, docType, index, similarityScore) {
 		return {content: content, createdAt: createdAt, docType: docType, id: id, index: index, similarityScore: similarityScore, title: title};
 	});
-var $elm$json$Json$Decode$float = _Json_decodeFloat;
 var $elm$json$Json$Decode$map7 = _Json_map7;
 var $author$project$Models$searchResultDecoder = A8(
 	$elm$json$Json$Decode$map7,
@@ -7210,7 +7296,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{view: newView}),
+						{justSavedClaude: false, view: newView}),
 					$elm$core$Platform$Cmd$none);
 			case 'DeleteDocument':
 				var docId = msg.a;
@@ -7225,7 +7311,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{error: $elm$core$Maybe$Nothing, loading: false}),
+							{error: $elm$core$Maybe$Nothing, justSavedClaude: false, loading: false, selectedDocument: $elm$core$Maybe$Nothing, view: $author$project$Main$ListView}),
 						A2($author$project$Api$getDocuments, model.config, $author$project$Main$GotDocuments));
 				} else {
 					var error = result.a;
@@ -7534,7 +7620,7 @@ var $author$project$Main$update = F2(
 						model,
 						{claudeLoading: true, error: $elm$core$Maybe$Nothing}),
 					A3($author$project$Api$askClaude, model.config, model.claudePrompt, $author$project$Main$ClaudeResponseReceived));
-			default:
+			case 'ClaudeResponseReceived':
 				var result = msg.a;
 				if (result.$ === 'Ok') {
 					var document = result.a;
@@ -7543,12 +7629,10 @@ var $author$project$Main$update = F2(
 							model,
 							{
 								claudeLoading: false,
-								claudePrompt: '',
-								error: $elm$core$Maybe$Nothing,
-								selectedDocument: $elm$core$Maybe$Just(document),
-								view: $author$project$Main$DocumentView
+								claudeResponse: $elm$core$Maybe$Just(document),
+								error: $elm$core$Maybe$Nothing
 							}),
-						A2($author$project$Api$getDocuments, model.config, $author$project$Main$GotDocuments));
+						$elm$core$Platform$Cmd$none);
 				} else {
 					var error = result.a;
 					return _Utils_Tuple2(
@@ -7560,6 +7644,82 @@ var $author$project$Main$update = F2(
 									$author$project$Main$httpErrorToString(error))
 							}),
 						$elm$core$Platform$Cmd$none);
+				}
+			case 'SaveClaudeResponse':
+				var _v15 = model.claudeResponse;
+				if (_v15.$ === 'Just') {
+					var document = _v15.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								claudePrompt: '',
+								claudeResponse: $elm$core$Maybe$Nothing,
+								justSavedClaude: true,
+								selectedDocument: $elm$core$Maybe$Just(document),
+								view: $author$project$Main$DocumentView
+							}),
+						A2($author$project$Api$getDocuments, model.config, $author$project$Main$GotDocuments));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'NewClaudeQuestion':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{claudePrompt: '', claudeResponse: $elm$core$Maybe$Nothing}),
+					$elm$core$Platform$Cmd$none);
+			case 'LoadClusters':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{clusterLoading: true, view: $author$project$Main$ClustersView}),
+					A3($author$project$Api$getClusters, model.config, $elm$core$Maybe$Nothing, $author$project$Main$GotClusters));
+			case 'GotClusters':
+				var result = msg.a;
+				if (result.$ === 'Ok') {
+					var clusterResponse = result.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								clusterLoading: false,
+								clusters: $elm$core$Maybe$Just(clusterResponse),
+								error: $elm$core$Maybe$Nothing
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var error = result.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								clusterLoading: false,
+								error: $elm$core$Maybe$Just(
+									$author$project$Main$httpErrorToString(error))
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			default:
+				var docId = msg.a;
+				var _v17 = A2(
+					$elm$core$List$filter,
+					function (doc) {
+						return _Utils_eq(doc.id, docId);
+					},
+					model.documents);
+				if (_v17.b) {
+					var doc = _v17.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								selectedDocument: $elm$core$Maybe$Just(doc),
+								view: $author$project$Main$DocumentView
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
 		}
 	});
@@ -7772,436 +7932,15 @@ var $author$project$Main$viewAddDocument = function (model) {
 					]))
 			]));
 };
+var $author$project$Main$NewClaudeQuestion = {$: 'NewClaudeQuestion'};
+var $author$project$Main$SaveClaudeResponse = {$: 'SaveClaudeResponse'};
 var $author$project$Main$SendClaudePrompt = {$: 'SendClaudePrompt'};
 var $author$project$Main$UpdateClaudePrompt = function (a) {
 	return {$: 'UpdateClaudePrompt', a: a};
 };
+var $elm$html$Html$h3 = _VirtualDom_node('h3');
 var $elm$html$Html$p = _VirtualDom_node('p');
 var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
-var $author$project$Main$viewClaude = function (model) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('claude-view')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$h2,
-				_List_Nil,
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Ask Claude')
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('claude-form')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('form-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Your prompt:')
-									])),
-								A2(
-								$elm$html$Html$textarea,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$value(model.claudePrompt),
-										$elm$html$Html$Events$onInput($author$project$Main$UpdateClaudePrompt),
-										$elm$html$Html$Attributes$placeholder('Ask Claude anything...'),
-										$elm$html$Html$Attributes$class('form-textarea'),
-										$elm$html$Html$Attributes$rows(10),
-										$elm$html$Html$Attributes$disabled(model.claudeLoading)
-									]),
-								_List_Nil)
-							])),
-						A2(
-						$elm$html$Html$button,
-						_List_fromArray(
-							[
-								$elm$html$Html$Events$onClick($author$project$Main$SendClaudePrompt),
-								$elm$html$Html$Attributes$class('submit-button'),
-								$elm$html$Html$Attributes$disabled(
-								$elm$core$String$isEmpty(model.claudePrompt) || model.claudeLoading)
-							]),
-						_List_fromArray(
-							[
-								model.claudeLoading ? $elm$html$Html$text('Asking Claude...') : $elm$html$Html$text('Send to Claude')
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('claude-info')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$p,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Claude will respond to your prompt and the conversation will be saved as a document.')
-									])),
-								A2(
-								$elm$html$Html$p,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('You can then search, edit, or reference it like any other document.')
-									]))
-							]))
-					]))
-			]));
-};
-var $author$project$Main$CancelEditingDocument = {$: 'CancelEditingDocument'};
-var $author$project$Main$ChangeView = function (a) {
-	return {$: 'ChangeView', a: a};
-};
-var $author$project$Main$SaveEditingDocument = {$: 'SaveEditingDocument'};
-var $author$project$Main$UpdateEditingContent = function (a) {
-	return {$: 'UpdateEditingContent', a: a};
-};
-var $author$project$Main$UpdateEditingDocType = function (a) {
-	return {$: 'UpdateEditingDocType', a: a};
-};
-var $author$project$Main$UpdateEditingTitle = function (a) {
-	return {$: 'UpdateEditingTitle', a: a};
-};
-var $elm$html$Html$span = _VirtualDom_node('span');
-var $elm$core$Maybe$withDefault = F2(
-	function (_default, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return value;
-		} else {
-			return _default;
-		}
-	});
-var $author$project$Main$viewEditingDocument = function (editing) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('document-view editing')
-			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$button,
-				_List_fromArray(
-					[
-						$elm$html$Html$Events$onClick(
-						$author$project$Main$ChangeView($author$project$Main$ListView)),
-						$elm$html$Html$Attributes$class('back-button')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('← Back')
-					])),
-				A2(
-				$elm$html$Html$h2,
-				_List_Nil,
-				_List_fromArray(
-					[
-						$elm$html$Html$text(editing.title)
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('document-meta')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$span,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('editing-label')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Editing mode')
-							]))
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('document-actions')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$button,
-						_List_fromArray(
-							[
-								$elm$html$Html$Events$onClick($author$project$Main$SaveEditingDocument),
-								$elm$html$Html$Attributes$class('save-button'),
-								$elm$html$Html$Attributes$disabled(
-								$elm$core$String$isEmpty(editing.title) || $elm$core$String$isEmpty(editing.content))
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Save')
-							])),
-						A2(
-						$elm$html$Html$button,
-						_List_fromArray(
-							[
-								$elm$html$Html$Events$onClick($author$project$Main$CancelEditingDocument),
-								$elm$html$Html$Attributes$class('cancel-button')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Cancel')
-							]))
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('form')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('form-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Title')
-									])),
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('text'),
-										$elm$html$Html$Attributes$value(editing.title),
-										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingTitle),
-										$elm$html$Html$Attributes$class('form-input')
-									]),
-								_List_Nil)
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('form-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Content')
-									])),
-								A2(
-								$elm$html$Html$textarea,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$value(editing.content),
-										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingContent),
-										$elm$html$Html$Attributes$class('form-textarea'),
-										$elm$html$Html$Attributes$rows(15)
-									]),
-								_List_Nil)
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('form-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Document Type (optional)')
-									])),
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('text'),
-										$elm$html$Html$Attributes$value(
-										A2($elm$core$Maybe$withDefault, '', editing.docType)),
-										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingDocType),
-										$elm$html$Html$Attributes$class('form-input')
-									]),
-								_List_Nil)
-							]))
-					]))
-			]));
-};
-var $author$project$Main$DeleteDocument = function (a) {
-	return {$: 'DeleteDocument', a: a};
-};
-var $author$project$Main$StartEditingDocument = function (a) {
-	return {$: 'StartEditingDocument', a: a};
-};
-var $elm$core$Maybe$andThen = F2(
-	function (callback, maybeValue) {
-		if (maybeValue.$ === 'Just') {
-			var value = maybeValue.a;
-			return callback(value);
-		} else {
-			return $elm$core$Maybe$Nothing;
-		}
-	});
-var $elm$core$List$drop = F2(
-	function (n, list) {
-		drop:
-		while (true) {
-			if (n <= 0) {
-				return list;
-			} else {
-				if (!list.b) {
-					return list;
-				} else {
-					var x = list.a;
-					var xs = list.b;
-					var $temp$n = n - 1,
-						$temp$list = xs;
-					n = $temp$n;
-					list = $temp$list;
-					continue drop;
-				}
-			}
-		}
-	});
-var $elm$core$List$head = function (list) {
-	if (list.b) {
-		var x = list.a;
-		var xs = list.b;
-		return $elm$core$Maybe$Just(x);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
-};
-var $author$project$Main$formatDateTime = function (isoString) {
-	var parts = A2($elm$core$String$split, 'T', isoString);
-	var timePart = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(
-			A2($elm$core$List$drop, 1, parts)));
-	var timeWithoutMs = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(
-			A2($elm$core$String$split, '.', timePart)));
-	var timeParts = A2($elm$core$String$split, ':', timeWithoutMs);
-	var minute = A2(
-		$elm$core$Maybe$withDefault,
-		'00',
-		$elm$core$List$head(
-			A2($elm$core$List$drop, 1, timeParts)));
-	var hour = A2(
-		$elm$core$Maybe$withDefault,
-		0,
-		A2(
-			$elm$core$Maybe$andThen,
-			$elm$core$String$toInt,
-			$elm$core$List$head(timeParts)));
-	var datePart = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(parts));
-	var dateParts = A2($elm$core$String$split, '-', datePart);
-	var day = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(
-			A2($elm$core$List$drop, 2, dateParts)));
-	var dayNum = A2(
-		$elm$core$Maybe$withDefault,
-		day,
-		A2(
-			$elm$core$Maybe$map,
-			$elm$core$String$fromInt,
-			$elm$core$String$toInt(day)));
-	var month = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(
-			A2($elm$core$List$drop, 1, dateParts)));
-	var monthName = function () {
-		switch (month) {
-			case '01':
-				return 'January';
-			case '02':
-				return 'February';
-			case '03':
-				return 'March';
-			case '04':
-				return 'April';
-			case '05':
-				return 'May';
-			case '06':
-				return 'June';
-			case '07':
-				return 'July';
-			case '08':
-				return 'August';
-			case '09':
-				return 'September';
-			case '10':
-				return 'October';
-			case '11':
-				return 'November';
-			case '12':
-				return 'December';
-			default:
-				return month;
-		}
-	}();
-	var year = A2(
-		$elm$core$Maybe$withDefault,
-		'',
-		$elm$core$List$head(dateParts));
-	var _v0 = (!hour) ? _Utils_Tuple2(12, 'am') : ((hour < 12) ? _Utils_Tuple2(hour, 'am') : ((hour === 12) ? _Utils_Tuple2(12, 'pm') : _Utils_Tuple2(hour - 12, 'pm')));
-	var hour12 = _v0.a;
-	var ampm = _v0.b;
-	return $elm$core$String$isEmpty(datePart) ? isoString : (monthName + (' ' + (dayNum + (', ' + (year + (' ' + ($elm$core$String$fromInt(hour12) + (':' + (minute + (' ' + ampm))))))))));
-};
-var $author$project$Main$formatDate = function (maybeDate) {
-	if (maybeDate.$ === 'Just') {
-		var dateStr = maybeDate.a;
-		return $author$project$Main$formatDateTime(dateStr);
-	} else {
-		return 'Unknown';
-	}
-};
 var $elm$html$Html$a = _VirtualDom_node('a');
 var $elm$html$Html$Attributes$align = $elm$html$Html$Attributes$stringProperty('align');
 var $elm$html$Html$Attributes$alt = $elm$html$Html$Attributes$stringProperty('alt');
@@ -8212,7 +7951,6 @@ var $elm$html$Html$code = _VirtualDom_node('code');
 var $elm$html$Html$del = _VirtualDom_node('del');
 var $elm$html$Html$em = _VirtualDom_node('em');
 var $elm$html$Html$h1 = _VirtualDom_node('h1');
-var $elm$html$Html$h3 = _VirtualDom_node('h3');
 var $elm$html$Html$h4 = _VirtualDom_node('h4');
 var $elm$html$Html$h5 = _VirtualDom_node('h5');
 var $elm$html$Html$h6 = _VirtualDom_node('h6');
@@ -8352,6 +8090,15 @@ var $elm$html$Html$thead = _VirtualDom_node('thead');
 var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
 var $elm$html$Html$tr = _VirtualDom_node('tr');
 var $elm$html$Html$ul = _VirtualDom_node('ul');
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
 var $elm$core$String$words = _String_words;
 var $dillonkearns$elm_markdown$Markdown$Renderer$defaultHtmlRenderer = {
 	blockQuote: $elm$html$Html$blockquote(_List_Nil),
@@ -9268,17 +9015,6 @@ var $dillonkearns$elm_markdown$Markdown$Parser$endWithOpenBlockOrParagraph = fun
 		}
 	}
 };
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
-	});
 var $elm$core$Dict$fromList = function (assocs) {
 	return A3(
 		$elm$core$List$foldl,
@@ -11795,11 +11531,29 @@ var $dillonkearns$elm_markdown$Markdown$InlineParser$autolinkToMatch = function 
 		$dillonkearns$elm_markdown$Markdown$InlineParser$Match(match));
 };
 var $elm$regex$Regex$findAtMost = _Regex_findAtMost;
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
 var $dillonkearns$elm_markdown$Markdown$Helpers$insideSquareBracketRegex = '[^\\[\\]\\\\]*(?:\\\\.[^\\[\\]\\\\]*)*';
 var $dillonkearns$elm_markdown$Markdown$InlineParser$refLabelRegex = A2(
 	$elm$core$Maybe$withDefault,
 	$elm$regex$Regex$never,
 	$elm$regex$Regex$fromString('^\\[\\s*(' + ($dillonkearns$elm_markdown$Markdown$Helpers$insideSquareBracketRegex + ')\\s*\\]')));
+var $elm$core$Maybe$andThen = F2(
+	function (callback, maybeValue) {
+		if (maybeValue.$ === 'Just') {
+			var value = maybeValue.a;
+			return callback(value);
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
+	});
 var $dillonkearns$elm_markdown$Markdown$Helpers$cleanWhitespaces = function (original) {
 	return original;
 };
@@ -16414,6 +16168,27 @@ var $elm$core$Result$andThen = F2(
 			return $elm$core$Result$Err(msg);
 		}
 	});
+var $elm$core$List$drop = F2(
+	function (n, list) {
+		drop:
+		while (true) {
+			if (n <= 0) {
+				return list;
+			} else {
+				if (!list.b) {
+					return list;
+				} else {
+					var x = list.a;
+					var xs = list.b;
+					var $temp$n = n - 1,
+						$temp$list = xs;
+					n = $temp$n;
+					list = $temp$list;
+					continue drop;
+				}
+			}
+		}
+	});
 var $dillonkearns$elm_markdown$Markdown$Block$foldl = F3(
 	function (_function, acc, list) {
 		foldl:
@@ -17056,12 +16831,399 @@ var $author$project$Main$renderMarkdown = function (markdown) {
 		return $elm$html$Html$text(markdown);
 	}
 };
-var $author$project$Main$viewReadOnlyDocument = function (doc) {
+var $author$project$Main$viewClaude = function (model) {
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('document-view')
+				$elm$html$Html$Attributes$class('claude-view')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h2,
+				_List_Nil,
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Ask Claude')
+					])),
+				function () {
+				var _v0 = model.claudeResponse;
+				if (_v0.$ === 'Just') {
+					var response = _v0.a;
+					return A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('claude-response')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$h3,
+										_List_Nil,
+										_List_fromArray(
+											[
+												$elm$html$Html$text(response.title)
+											])),
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('document-content')
+											]),
+										_List_fromArray(
+											[
+												$author$project$Main$renderMarkdown(response.content)
+											])),
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('form-actions')
+											]),
+										_List_fromArray(
+											[
+												A2(
+												$elm$html$Html$button,
+												_List_fromArray(
+													[
+														$elm$html$Html$Events$onClick($author$project$Main$SaveClaudeResponse),
+														$elm$html$Html$Attributes$class('save-button')
+													]),
+												_List_fromArray(
+													[
+														$elm$html$Html$text('Save')
+													])),
+												A2(
+												$elm$html$Html$button,
+												_List_fromArray(
+													[
+														$elm$html$Html$Events$onClick($author$project$Main$NewClaudeQuestion),
+														$elm$html$Html$Attributes$class('cancel-button')
+													]),
+												_List_fromArray(
+													[
+														$elm$html$Html$text('New Question')
+													]))
+											]))
+									]))
+							]));
+				} else {
+					return A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('claude-form')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('form-group')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$label,
+										_List_Nil,
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Your prompt:')
+											])),
+										A2(
+										$elm$html$Html$textarea,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$value(model.claudePrompt),
+												$elm$html$Html$Events$onInput($author$project$Main$UpdateClaudePrompt),
+												$elm$html$Html$Attributes$placeholder('Ask Claude anything...'),
+												$elm$html$Html$Attributes$class('form-textarea'),
+												$elm$html$Html$Attributes$rows(10),
+												$elm$html$Html$Attributes$disabled(model.claudeLoading)
+											]),
+										_List_Nil)
+									])),
+								A2(
+								$elm$html$Html$button,
+								_List_fromArray(
+									[
+										$elm$html$Html$Events$onClick($author$project$Main$SendClaudePrompt),
+										$elm$html$Html$Attributes$class('submit-button'),
+										$elm$html$Html$Attributes$disabled(
+										$elm$core$String$isEmpty(model.claudePrompt) || model.claudeLoading)
+									]),
+								_List_fromArray(
+									[
+										model.claudeLoading ? $elm$html$Html$text('Asking Claude...') : $elm$html$Html$text('Send to Claude')
+									])),
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('claude-info')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$p,
+										_List_Nil,
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Claude will respond to your prompt. You can then choose to save it as a document.')
+											])),
+										A2(
+										$elm$html$Html$p,
+										_List_Nil,
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Saved documents can be searched, edited, or referenced like any other document.')
+											]))
+									]))
+							]));
+				}
+			}()
+			]));
+};
+var $elm$core$String$fromFloat = _String_fromNumber;
+var $elm$core$Basics$round = _Basics_round;
+var $author$project$Main$SelectDocumentFromCluster = function (a) {
+	return {$: 'SelectDocumentFromCluster', a: a};
+};
+var $elm$html$Html$span = _VirtualDom_node('span');
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
+var $author$project$Main$viewClusterDocument = function (doc) {
+	return A2(
+		$elm$html$Html$li,
+		_List_Nil,
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$a,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$href('#'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$SelectDocumentFromCluster(doc.id)),
+						A2($elm$html$Html$Attributes$style, 'cursor', 'pointer'),
+						A2($elm$html$Html$Attributes$style, 'color', '#2563eb')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(doc.title)
+					])),
+				function () {
+				var _v0 = doc.docType;
+				if (_v0.$ === 'Just') {
+					var docType = _v0.a;
+					return A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('doc-type-badge')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(' (' + (docType + ')'))
+							]));
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}()
+			]));
+};
+var $author$project$Main$viewCluster = F2(
+	function (model, cluster) {
+		var totalDocs = function () {
+			var _v1 = model.clusters;
+			if (_v1.$ === 'Just') {
+				var clusterResponse = _v1.a;
+				return clusterResponse.totalDocuments;
+			} else {
+				return 0;
+			}
+		}();
+		var representativeDoc = $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (doc) {
+					return _Utils_eq(doc.id, cluster.representativeDocumentId);
+				},
+				model.documents));
+		var representativeTitle = function () {
+			if (representativeDoc.$ === 'Just') {
+				var doc = representativeDoc.a;
+				return doc.title;
+			} else {
+				return 'Unknown';
+			}
+		}();
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('cluster-card')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$h3,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							$elm$core$String$fromInt(cluster.clusterId + 1) + ('. ' + (cluster.clusterName + (' (' + ($elm$core$String$fromInt(cluster.size) + ('/' + ($elm$core$String$fromInt(totalDocs) + ')')))))))
+						])),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('cluster-representative')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Representative: ' + representativeTitle)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('cluster-documents')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$h4,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Documents:')
+								])),
+							A2(
+							$elm$html$Html$ul,
+							_List_Nil,
+							A2($elm$core$List$map, $author$project$Main$viewClusterDocument, cluster.documents))
+						]))
+				]));
+	});
+var $author$project$Main$viewClusters = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('clusters-view')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h2,
+				_List_Nil,
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Document Clusters')
+					])),
+				function () {
+				if (model.clusterLoading) {
+					return A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('loading')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Analyzing document clusters...')
+							]));
+				} else {
+					var _v0 = model.clusters;
+					if (_v0.$ === 'Just') {
+						var clusterResponse = _v0.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_Nil,
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('cluster-info')
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$p,
+											_List_Nil,
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													'Found ' + ($elm$core$String$fromInt(clusterResponse.numClusters) + ' clusters'))
+												])),
+											A2(
+											$elm$html$Html$p,
+											_List_Nil,
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													'Silhouette score: ' + $elm$core$String$fromFloat(
+														$elm$core$Basics$round(clusterResponse.silhouetteScore * 100) / 100))
+												]))
+										])),
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('clusters-grid')
+										]),
+									A2(
+										$elm$core$List$map,
+										$author$project$Main$viewCluster(model),
+										clusterResponse.clusters))
+								]));
+					} else {
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('empty-state')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('No clusters loaded. Click \'Clusters\' to analyze.')
+								]));
+					}
+				}
+			}()
+			]));
+};
+var $author$project$Main$CancelEditingDocument = {$: 'CancelEditingDocument'};
+var $author$project$Main$ChangeView = function (a) {
+	return {$: 'ChangeView', a: a};
+};
+var $author$project$Main$SaveEditingDocument = {$: 'SaveEditingDocument'};
+var $author$project$Main$UpdateEditingContent = function (a) {
+	return {$: 'UpdateEditingContent', a: a};
+};
+var $author$project$Main$UpdateEditingDocType = function (a) {
+	return {$: 'UpdateEditingDocType', a: a};
+};
+var $author$project$Main$UpdateEditingTitle = function (a) {
+	return {$: 'UpdateEditingTitle', a: a};
+};
+var $author$project$Main$viewEditingDocument = function (editing) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('document-view editing')
 			]),
 		_List_fromArray(
 			[
@@ -17082,7 +17244,7 @@ var $author$project$Main$viewReadOnlyDocument = function (doc) {
 				_List_Nil,
 				_List_fromArray(
 					[
-						$elm$html$Html$text(doc.title)
+						$elm$html$Html$text(editing.title)
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -17096,31 +17258,12 @@ var $author$project$Main$viewReadOnlyDocument = function (doc) {
 						$elm$html$Html$span,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('created-at')
+								$elm$html$Html$Attributes$class('editing-label')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text(
-								'Created: ' + $author$project$Main$formatDate(doc.createdAt))
-							])),
-						function () {
-						var _v0 = doc.docType;
-						if (_v0.$ === 'Just') {
-							var dt = _v0.a;
-							return A2(
-								$elm$html$Html$span,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('category')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Type: ' + dt)
-									]));
-						} else {
-							return $elm$html$Html$text('');
-						}
-					}()
+								$elm$html$Html$text('Editing mode')
+							]))
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -17134,39 +17277,352 @@ var $author$project$Main$viewReadOnlyDocument = function (doc) {
 						$elm$html$Html$button,
 						_List_fromArray(
 							[
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$StartEditingDocument(doc)),
-								$elm$html$Html$Attributes$class('edit-button')
+								$elm$html$Html$Events$onClick($author$project$Main$SaveEditingDocument),
+								$elm$html$Html$Attributes$class('save-button'),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$String$isEmpty(editing.title) || $elm$core$String$isEmpty(editing.content))
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('Edit')
+								$elm$html$Html$text('Save')
 							])),
 						A2(
 						$elm$html$Html$button,
 						_List_fromArray(
 							[
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$DeleteDocument(doc.id)),
-								$elm$html$Html$Attributes$class('delete-button')
+								$elm$html$Html$Events$onClick($author$project$Main$CancelEditingDocument),
+								$elm$html$Html$Attributes$class('cancel-button')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('Delete')
+								$elm$html$Html$text('Cancel')
 							]))
 					])),
 				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('document-content')
+						$elm$html$Html$Attributes$class('form')
 					]),
 				_List_fromArray(
 					[
-						$author$project$Main$renderMarkdown(doc.content)
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('form-group')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Title')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$value(editing.title),
+										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingTitle),
+										$elm$html$Html$Attributes$class('form-input')
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('form-group')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Content')
+									])),
+								A2(
+								$elm$html$Html$textarea,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$value(editing.content),
+										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingContent),
+										$elm$html$Html$Attributes$class('form-textarea'),
+										$elm$html$Html$Attributes$rows(15)
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('form-group')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Document Type (optional)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('text'),
+										$elm$html$Html$Attributes$value(
+										A2($elm$core$Maybe$withDefault, '', editing.docType)),
+										$elm$html$Html$Events$onInput($author$project$Main$UpdateEditingDocType),
+										$elm$html$Html$Attributes$class('form-input')
+									]),
+								_List_Nil)
+							]))
 					]))
 			]));
 };
+var $author$project$Main$ClaudeView = {$: 'ClaudeView'};
+var $author$project$Main$DeleteDocument = function (a) {
+	return {$: 'DeleteDocument', a: a};
+};
+var $author$project$Main$StartEditingDocument = function (a) {
+	return {$: 'StartEditingDocument', a: a};
+};
+var $author$project$Main$formatDateTime = function (isoString) {
+	var parts = A2($elm$core$String$split, 'T', isoString);
+	var timePart = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(
+			A2($elm$core$List$drop, 1, parts)));
+	var timeWithoutMs = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(
+			A2($elm$core$String$split, '.', timePart)));
+	var timeParts = A2($elm$core$String$split, ':', timeWithoutMs);
+	var minute = A2(
+		$elm$core$Maybe$withDefault,
+		'00',
+		$elm$core$List$head(
+			A2($elm$core$List$drop, 1, timeParts)));
+	var hour = A2(
+		$elm$core$Maybe$withDefault,
+		0,
+		A2(
+			$elm$core$Maybe$andThen,
+			$elm$core$String$toInt,
+			$elm$core$List$head(timeParts)));
+	var datePart = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(parts));
+	var dateParts = A2($elm$core$String$split, '-', datePart);
+	var day = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(
+			A2($elm$core$List$drop, 2, dateParts)));
+	var dayNum = A2(
+		$elm$core$Maybe$withDefault,
+		day,
+		A2(
+			$elm$core$Maybe$map,
+			$elm$core$String$fromInt,
+			$elm$core$String$toInt(day)));
+	var month = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(
+			A2($elm$core$List$drop, 1, dateParts)));
+	var monthName = function () {
+		switch (month) {
+			case '01':
+				return 'January';
+			case '02':
+				return 'February';
+			case '03':
+				return 'March';
+			case '04':
+				return 'April';
+			case '05':
+				return 'May';
+			case '06':
+				return 'June';
+			case '07':
+				return 'July';
+			case '08':
+				return 'August';
+			case '09':
+				return 'September';
+			case '10':
+				return 'October';
+			case '11':
+				return 'November';
+			case '12':
+				return 'December';
+			default:
+				return month;
+		}
+	}();
+	var year = A2(
+		$elm$core$Maybe$withDefault,
+		'',
+		$elm$core$List$head(dateParts));
+	var _v0 = (!hour) ? _Utils_Tuple2(12, 'am') : ((hour < 12) ? _Utils_Tuple2(hour, 'am') : ((hour === 12) ? _Utils_Tuple2(12, 'pm') : _Utils_Tuple2(hour - 12, 'pm')));
+	var hour12 = _v0.a;
+	var ampm = _v0.b;
+	return $elm$core$String$isEmpty(datePart) ? isoString : (monthName + (' ' + (dayNum + (', ' + (year + (' ' + ($elm$core$String$fromInt(hour12) + (':' + (minute + (' ' + ampm))))))))));
+};
+var $author$project$Main$formatDate = function (maybeDate) {
+	if (maybeDate.$ === 'Just') {
+		var dateStr = maybeDate.a;
+		return $author$project$Main$formatDateTime(dateStr);
+	} else {
+		return 'Unknown';
+	}
+};
+var $author$project$Main$viewReadOnlyDocument = F2(
+	function (model, doc) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('document-view')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Events$onClick(
+							$author$project$Main$ChangeView($author$project$Main$ListView)),
+							$elm$html$Html$Attributes$class('back-button')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('← Back')
+						])),
+					A2(
+					$elm$html$Html$h2,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text(doc.title)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('document-meta')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('created-at')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'Created: ' + $author$project$Main$formatDate(doc.createdAt))
+								])),
+							function () {
+							var _v0 = doc.docType;
+							if (_v0.$ === 'Just') {
+								var dt = _v0.a;
+								return A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('category')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Type: ' + dt)
+										]));
+							} else {
+								return $elm$html$Html$text('');
+							}
+						}()
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('document-actions')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Events$onClick(
+									$author$project$Main$StartEditingDocument(doc)),
+									$elm$html$Html$Attributes$class('edit-button')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Edit')
+								])),
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Events$onClick(
+									$author$project$Main$DeleteDocument(doc.id)),
+									$elm$html$Html$Attributes$class('delete-button')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Delete')
+								]))
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('document-content')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Main$renderMarkdown(doc.content)
+						])),
+					model.justSavedClaude ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('document-actions'),
+							A2($elm$html$Html$Attributes$style, 'margin-top', '2rem')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Events$onClick(
+									$author$project$Main$ChangeView($author$project$Main$ClaudeView)),
+									$elm$html$Html$Attributes$class('submit-button')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Ask another question')
+								]))
+						])) : $elm$html$Html$text('')
+				]));
+	});
 var $author$project$Main$viewDocument = function (model) {
 	var _v0 = model.selectedDocument;
 	if (_v0.$ === 'Just') {
@@ -17174,9 +17630,9 @@ var $author$project$Main$viewDocument = function (model) {
 		var _v1 = model.editingDocument;
 		if (_v1.$ === 'Just') {
 			var editing = _v1.a;
-			return _Utils_eq(editing.id, doc.id) ? $author$project$Main$viewEditingDocument(editing) : $author$project$Main$viewReadOnlyDocument(doc);
+			return _Utils_eq(editing.id, doc.id) ? $author$project$Main$viewEditingDocument(editing) : A2($author$project$Main$viewReadOnlyDocument, model, doc);
 		} else {
-			return $author$project$Main$viewReadOnlyDocument(doc);
+			return A2($author$project$Main$viewReadOnlyDocument, model, doc);
 		}
 	} else {
 		return A2(
@@ -17386,7 +17842,7 @@ var $author$project$Main$viewError = function (maybeError) {
 	}
 };
 var $author$project$Main$AddDocumentView = {$: 'AddDocumentView'};
-var $author$project$Main$ClaudeView = {$: 'ClaudeView'};
+var $author$project$Main$LoadClusters = {$: 'LoadClusters'};
 var $author$project$Main$LoadRandomDocuments = {$: 'LoadRandomDocuments'};
 var $author$project$Main$LoadStats = {$: 'LoadStats'};
 var $author$project$Main$SearchDocuments = {$: 'SearchDocuments'};
@@ -17478,6 +17934,17 @@ var $author$project$Main$viewHeader = function (model) {
 						$elm$html$Html$button,
 						_List_fromArray(
 							[
+								$elm$html$Html$Events$onClick($author$project$Main$LoadClusters),
+								$elm$html$Html$Attributes$class('nav-button')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Clusters')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
 								$elm$html$Html$Events$onClick($author$project$Main$LoadStats),
 								$elm$html$Html$Attributes$class('nav-button')
 							]),
@@ -17520,8 +17987,6 @@ var $author$project$Main$viewHeader = function (model) {
 					]))
 			]));
 };
-var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
-var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
 var $author$project$Main$viewRandomDocuments = function (model) {
 	return A2(
 		$elm$html$Html$div,
@@ -17576,8 +18041,6 @@ var $author$project$Main$viewRandomDocuments = function (model) {
 				A2($elm$core$List$map, $author$project$Main$viewDocumentCard, model.randomDocuments))
 			]));
 };
-var $elm$core$String$fromFloat = _String_fromNumber;
-var $elm$core$Basics$round = _Basics_round;
 var $author$project$Main$formatPercent = function (score) {
 	var percent = score * 100;
 	var rounded = $elm$core$Basics$round(percent * 100) / 100;
@@ -17869,8 +18332,10 @@ var $author$project$Main$view = function (model) {
 						return $author$project$Main$viewStats(model);
 					case 'RandomView':
 						return $author$project$Main$viewRandomDocuments(model);
-					default:
+					case 'ClaudeView':
 						return $author$project$Main$viewClaude(model);
+					default:
+						return $author$project$Main$viewClusters(model);
 				}
 			}()
 			]));

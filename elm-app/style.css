@@ -491,6 +491,110 @@
     font-size: 0.875rem;
 }
 
+.claude-response {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 2rem;
+    margin-top: 1rem;
+}
+
+.claude-response h3 {
+    margin: 0 0 1rem 0;
+    color: var(--primary-color);
+}
+
+.claude-response .document-content {
+    margin-bottom: 1.5rem;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.clusters-view {
+    padding: 2rem;
+}
+
+.clusters-view h2 {
+    margin-top: 0;
+    color: var(--text-primary);
+}
+
+.cluster-info {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 2rem;
+}
+
+.cluster-info p {
+    margin: 0.5rem 0;
+    color: var(--text-secondary);
+}
+
+.clusters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.cluster-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    transition: box-shadow 0.2s;
+}
+
+.cluster-card:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.cluster-card h3 {
+    margin: 0 0 1rem 0;
+    color: var(--primary-color);
+}
+
+.cluster-card h4 {
+    margin: 1rem 0 0.5rem 0;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+}
+
+.cluster-meta {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.cluster-representative {
+    background-color: var(--bg-secondary);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+.cluster-documents {
+    margin-top: 1rem;
+}
+
+.cluster-documents ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.cluster-documents li {
+    margin: 0.25rem 0;
+    font-size: 0.875rem;
+}
+
+.doc-type-badge {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
 @media (max-width: 768px) {
     .app-header {
         padding: 1rem;
@@ -505,6 +609,10 @@
     }
     
     .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .clusters-grid {
         grid-template-columns: 1fr;
     }
 }

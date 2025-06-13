@@ -112,3 +112,12 @@ askClaude config prompt msg =
         , body = Http.jsonBody (encodeClaude prompt)
         , expect = Http.expectJson msg documentDecoder
         }
+
+
+getClusters : Config -> Maybe Int -> (Result Http.Error ClusterResponse -> msg) -> Cmd msg
+getClusters config numClusters msg =
+    Http.post
+        { url = config.apiUrl ++ "/clusters"
+        , body = Http.jsonBody (encodeClusterRequest numClusters)
+        , expect = Http.expectJson msg clusterResponseDecoder
+        }

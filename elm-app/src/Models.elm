@@ -40,6 +40,31 @@ type alias ApiError =
     }
 
 
+type alias ClusterDocument =
+    { id : String
+    , title : String
+    , docType : Maybe String
+    , createdAt : Maybe String
+    }
+
+
+type alias Cluster =
+    { clusterId : Int
+    , clusterName : String
+    , size : Int
+    , documents : List ClusterDocument
+    , representativeDocumentId : String
+    }
+
+
+type alias ClusterResponse =
+    { clusters : List Cluster
+    , numClusters : Int
+    , silhouetteScore : Float
+    , totalDocuments : Int
+    }
+
+
 
 documentDecoder : Decoder Document
 documentDecoder =
@@ -136,3 +161,40 @@ encodeClaude prompt =
         , ( "max_tokens", Encode.int 1000 )
         , ( "temperature", Encode.float 0.7 )
         ]
+
+
+clusterDocumentDecoder : Decoder ClusterDocument
+clusterDocumentDecoder =
+    Decode.map4 ClusterDocument
+        (Decode.field "id" Decode.string)
+        (Decode.field "title" Decode.string)
+        (Decode.maybe (Decode.field "doc_type" Decode.string))
+        (Decode.maybe (Decode.field "created_at" Decode.string))
+
+
+clusterDecoder : Decoder Cluster
+clusterDecoder =
+    Decode.map5 Cluster
+        (Decode.field "cluster_id" Decode.int)
+        (Decode.field "cluster_name" Decode.string)
+        (Decode.field "size" Decode.int)
+        (Decode.field "documents" (Decode.list clusterDocumentDecoder))
+        (Decode.field "representative_document_id" Decode.string)
+
+
+clusterResponseDecoder : Decoder ClusterResponse
+clusterResponseDecoder =
+    Decode.map4 ClusterResponse
+        (Decode.field "clusters" (Decode.list clusterDecoder))
+        (Decode.field "num_clusters" Decode.int)
+        (Decode.field "silhouette_score" Decode.float)
+        (Decode.field "total_documents" Decode.int)
+
+
+encodeClusterRequest : Maybe Int -> Encode.Value
+encodeClusterRequest numClusters =
+    case numClusters of
+        Just n ->
+            Encode.object [ ( "num_clusters", Encode.int n ) ]
+        Nothing ->
+            Encode.object []
