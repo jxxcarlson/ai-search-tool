@@ -1,6 +1,6 @@
 # AI Search Tool
 
-A semantic document search system with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB. Now includes Claude AI integration for intelligent conversations that are automatically saved as searchable documents.
+A semantic document search system with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB. Now includes Claude AI integration for intelligent conversations that can be saved as searchable documents.
 
 ## Installation
 
