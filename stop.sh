@@ -95,9 +95,26 @@ echo -e "${BLUE}Checking for related Python processes...${NC}"
 # Find processes running server.py
 server_pids=$(ps aux | grep -E "python.*server\.py" | grep -v grep | awk '{print $2}')
 if [ ! -z "$server_pids" ]; then
-    echo -e "${BLUE}Found server.py processes: $server_pids${NC}"
+    echo -e "${YELLOW}Found lingering server.py processes: $server_pids${NC}"
+    echo -e "${BLUE}Stopping these processes...${NC}"
     kill $server_pids 2>/dev/null
-    sleep 1
+    sleep 2
+    
+    # Check if they're still running and force kill if necessary
+    remaining_pids=$(ps aux | grep -E "python.*server\.py" | grep -v grep | awk '{print $2}')
+    if [ ! -z "$remaining_pids" ]; then
+        echo -e "${YELLOW}Force stopping stubborn processes...${NC}"
+        kill -9 $remaining_pids 2>/dev/null
+        sleep 1
+    fi
+    
+    # Final check
+    final_pids=$(ps aux | grep -E "python.*server\.py" | grep -v grep | awk '{print $2}')
+    if [ -z "$final_pids" ]; then
+        echo -e "${GREEN}✓ All server.py processes stopped${NC}"
+    else
+        echo -e "${RED}✗ Failed to stop some server.py processes: $final_pids${NC}"
+    fi
 fi
 
 # Find processes running http.server in elm-app directory
@@ -110,13 +127,27 @@ fi
 
 # Summary
 echo
-if [ $api_result -eq 0 ] && [ $web_result -eq 0 ]; then
+
+# Final check for any remaining server processes
+final_server_check=$(ps aux | grep -E "python.*server\.py" | grep -v grep | wc -l)
+final_http_check=$(ps aux | grep -E "python.*http\.server" | grep -v grep | wc -l)
+
+if [ $api_result -eq 0 ] && [ $web_result -eq 0 ] && [ $final_server_check -eq 0 ] && [ $final_http_check -eq 0 ]; then
     echo -e "${GREEN}✓ All services stopped successfully${NC}"
     exit 0
 else
     echo -e "${YELLOW}⚠ Some services may not have stopped properly${NC}"
-    echo -e "${YELLOW}  You can check for remaining processes with:${NC}"
-    echo -e "${YELLOW}  lsof -i:$API_PORT${NC}"
-    echo -e "${YELLOW}  lsof -i:$WEB_PORT${NC}"
+    
+    if [ $final_server_check -gt 0 ]; then
+        echo -e "${RED}  Remaining server.py processes found${NC}"
+        echo -e "${YELLOW}  Try running: pkill -f 'python.*server.py'${NC}"
+    fi
+    
+    if [ $api_result -ne 0 ] || [ $web_result -ne 0 ]; then
+        echo -e "${YELLOW}  You can check for remaining processes with:${NC}"
+        echo -e "${YELLOW}  lsof -i:$API_PORT${NC}"
+        echo -e "${YELLOW}  lsof -i:$WEB_PORT${NC}"
+    fi
+    
     exit 1
 fi

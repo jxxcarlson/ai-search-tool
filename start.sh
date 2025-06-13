@@ -81,16 +81,44 @@ trap cleanup EXIT INT TERM
 
 # Start API server
 echo -e "${BLUE}Starting API server on port $API_PORT...${NC}"
+echo -e "${BLUE}Loading document store and model...${NC}"
 source venv/bin/activate
-python server.py $API_PORT &
+
+# Check if virtual environment is activated
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo -e "${RED}Failed to activate virtual environment!${NC}"
+    echo -e "${YELLOW}Make sure you have created a virtual environment with: python3 -m venv venv${NC}"
+    exit 1
+fi
+
+# Start the server and capture output
+python server.py $API_PORT > api_server.log 2>&1 &
 API_PID=$!
 
-# Wait for API server to start
-sleep 3
+# Wait for API server to start (give it more time for model loading)
+echo -e "${BLUE}Waiting for API server to initialize...${NC}"
+for i in {1..10}; do
+    if lsof -i:$API_PORT > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ API server started successfully${NC}"
+        break
+    fi
+    sleep 1
+done
 
 # Check if API server is running
-if ! lsof -i:$API_PORT > /dev/null; then
+if ! lsof -i:$API_PORT > /dev/null 2>&1; then
     echo -e "${RED}API server failed to start!${NC}"
+    echo -e "${YELLOW}Checking logs...${NC}"
+    if [ -f api_server.log ]; then
+        echo -e "${YELLOW}Last 10 lines of API server log:${NC}"
+        tail -10 api_server.log
+    fi
+    
+    # Check if process is still alive
+    if ! kill -0 $API_PID 2>/dev/null; then
+        echo -e "${RED}API server process crashed${NC}"
+    fi
+    
     exit 1
 fi
 
