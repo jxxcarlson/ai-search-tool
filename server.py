@@ -263,7 +263,7 @@ def generate_cluster_name(documents: List[dict]) -> str:
         
         # Numbers and common words specific to this app
         'one', 'two', 'three', 'four', 'five', 'first', 'second', 'third',
-        'claude:', 'claude', 'document', 'documents', 'file', 'files'
+        'document', 'documents', 'file', 'files'
     }
     
     # Simple stemming function to group similar words
@@ -297,11 +297,16 @@ def generate_cluster_name(documents: List[dict]) -> str:
     for doc in documents:
         # Split title into words, handle punctuation
         import re
+        # Remove "Claude:" prefix if present
+        title = doc['title']
+        if title.startswith('Claude:'):
+            title = title[7:].strip()
+        
         # Remove punctuation and split into words
-        words = re.findall(r'\b[a-zA-Z]+\b', doc['title'].lower())
+        words = re.findall(r'\b[a-zA-Z]+\b', title.lower())
         # Filter out stop words and short words
         for word in words:
-            if len(word) > 2 and word not in stop_words:
+            if len(word) > 2 and word not in stop_words and word.lower() != 'claude':
                 stem = simple_stem(word)
                 all_words.append(stem)
                 # Keep track of original forms
