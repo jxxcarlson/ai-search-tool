@@ -1,6 +1,6 @@
 # AI Search Tool
 
-A semantic document search system with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB.
+A semantic document search system with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB. Now includes Claude AI integration for intelligent conversations that are automatically saved as searchable documents.
 
 ## Installation
 
@@ -49,11 +49,56 @@ elm make src/Main.elm --output=main.js
 cd ..
 ```
 
-### Step 4: Start the Services
+### Step 4: Set Up Claude Integration (Optional)
 
-You'll need two terminal windows:
+To enable the Claude AI integration:
 
-**Terminal 1 - Start the API Server:**
+```bash
+# Set your Anthropic API key as an environment variable
+export ANTHROPIC_API_KEY=your-api-key-here
+```
+
+Note: The Claude integration is optional. The application will work without it, but the "Ask Claude" feature will not be available.
+
+### Step 5: Start the Services
+
+**Option 1: Single Command Startup (Recommended)**
+
+```bash
+# On macOS/Linux:
+./start.sh
+
+# On Windows or if you prefer Python:
+python start.py
+
+# With custom ports:
+./start.sh --api-port 8011 --web-port 8081
+# or
+python start.py --api-port 8011 --web-port 8081
+```
+
+This will:
+- Check all prerequisites
+- Build the Elm app if needed
+- Start both servers
+- Update configuration automatically
+- Handle shutdown gracefully with Ctrl+C
+
+To stop the services later:
+```bash
+# On macOS/Linux:
+./stop.sh
+
+# On Windows or if you prefer Python:
+python stop.py
+
+# With custom ports:
+./stop.sh --api-port 8011 --web-port 8081
+```
+
+**Option 2: Manual Startup (Two Terminals)**
+
+Terminal 1 - Start the API Server:
 ```bash
 # Make sure virtual environment is activated
 source venv/bin/activate
@@ -62,7 +107,7 @@ source venv/bin/activate
 python server.py 8010
 ```
 
-**Terminal 2 - Start the Web Server:**
+Terminal 2 - Start the Web Server:
 ```bash
 # Navigate to the Elm app directory
 cd elm-app
@@ -89,6 +134,20 @@ The Elm web application provides:
 - **Stats** - View system statistics
 - **Search** - Semantic search across all documents
 - **Edit/Delete** - Full document management capabilities
+- **Ask Claude** - Send prompts to Claude AI and save responses as documents
+
+#### Using Claude Integration
+
+1. Click the "Ask Claude" button in the navigation bar
+2. Enter your prompt in the text area
+3. Click "Send to Claude" to submit your question
+4. Claude's response will be automatically saved as a new document
+5. The response appears in Markdown format and is fully searchable
+
+Example prompts:
+- "Explain how vector databases work"
+- "Write a Python function to calculate fibonacci numbers"
+- "What are the benefits of functional programming?"
 
 ### Command Line Interface
 
@@ -155,6 +214,11 @@ lu show 5
 
 4. **First time model download**: The first time you run the system, it will download the sentence transformer model (all-MiniLM-L6-v2), which may take a few minutes.
 
+5. **Claude API errors**: If you see a 503 error when using the Ask Claude feature:
+   - Make sure you've set the ANTHROPIC_API_KEY environment variable
+   - Ensure the API key is set in the same terminal session where you start the server
+   - Verify your API key is valid and has appropriate permissions
+
 ## Features
 
 - **Semantic Search**: Uses sentence transformers to find documents by meaning, not just keywords
@@ -164,10 +228,12 @@ lu show 5
 - **CLI Tool**: Command-line interface for automation and scripting
 - **Document Management**: Create, read, update, and delete documents
 - **Markdown Support**: Full Markdown rendering in the viewer
+- **Claude AI Integration**: Ask questions to Claude and save responses as searchable documents
 
 ## Technology Stack
 
-- **Backend**: Python, FastAPI, SQLAlchemy, ChromaDB
+- **Backend**: Python, FastAPI, SQLAlchemy, ChromaDB, Anthropic Claude API
 - **Frontend**: Elm, HTML5, CSS3
 - **ML Model**: sentence-transformers (all-MiniLM-L6-v2)
 - **Storage**: SQLite (metadata) + ChromaDB (vectors)
+

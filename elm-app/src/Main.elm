@@ -31,6 +31,8 @@ type alias Model =
     , stats : Maybe Stats
     , editingDocument : Maybe EditingDocument
     , randomDocuments : List Document
+    , claudePrompt : String
+    , claudeLoading : Bool
     }
 
 
@@ -56,6 +58,7 @@ type View
     | AddDocumentView
     | StatsView
     | RandomView
+    | ClaudeView
 
 
 type Msg
@@ -88,6 +91,9 @@ type Msg
     | SaveEditingDocument
     | DocumentRenamed (Result Http.Error ())
     | DocumentUpdated (Result Http.Error Document)
+    | UpdateClaudePrompt String
+    | SendClaudePrompt
+    | ClaudeResponseReceived (Result Http.Error Document)
 
 
 type alias Flags =
@@ -109,6 +115,8 @@ init flags =
       , stats = Nothing
       , editingDocument = Nothing
       , randomDocuments = []
+      , claudePrompt = ""
+      , claudeLoading = False
       }
     , Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
     )
@@ -369,6 +377,35 @@ update msg model =
                     , Cmd.none
                     )
 
+        UpdateClaudePrompt prompt ->
+            ( { model | claudePrompt = prompt }, Cmd.none )
+
+        SendClaudePrompt ->
+            if String.isEmpty model.claudePrompt then
+                ( model, Cmd.none )
+            else
+                ( { model | claudeLoading = True, error = Nothing }
+                , Api.askClaude model.config model.claudePrompt ClaudeResponseReceived
+                )
+
+        ClaudeResponseReceived result ->
+            case result of
+                Ok document ->
+                    ( { model 
+                        | claudeLoading = False
+                        , claudePrompt = ""
+                        , selectedDocument = Just document
+                        , view = DocumentView
+                        , error = Nothing
+                      }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+
+                Err error ->
+                    ( { model | claudeLoading = False, error = Just (httpErrorToString error) }
+                    , Cmd.none
+                    )
+
 
 httpErrorToString : Http.Error -> String
 httpErrorToString error =
@@ -412,6 +449,9 @@ view model =
 
             RandomView ->
                 viewRandomDocuments model
+
+            ClaudeView ->
+                viewClaude model
         ]
 
 
@@ -422,6 +462,7 @@ viewHeader model =
         , nav []
             [ button [ onClick (ChangeView ListView), class "nav-button" ] [ text "Documents" ]
             , button [ onClick (ChangeView AddDocumentView), class "nav-button" ] [ text "Add Document" ]
+            , button [ onClick (ChangeView ClaudeView), class "nav-button" ] [ text "Ask Claude" ]
             , button [ onClick LoadRandomDocuments, class "nav-button" ] [ text "Random" ]
             , button [ onClick LoadStats, class "nav-button" ] [ text "Stats" ]
             ]
@@ -672,6 +713,41 @@ viewRandomDocuments model =
           else
             div [ class "documents-grid" ]
                 (List.map viewDocumentCard model.randomDocuments)
+        ]
+
+
+viewClaude : Model -> Html Msg
+viewClaude model =
+    div [ class "claude-view" ]
+        [ h2 [] [ text "Ask Claude" ]
+        , div [ class "claude-form" ]
+            [ div [ class "form-group" ]
+                [ label [] [ text "Your prompt:" ]
+                , textarea
+                    [ value model.claudePrompt
+                    , onInput UpdateClaudePrompt
+                    , placeholder "Ask Claude anything..."
+                    , class "form-textarea"
+                    , rows 10
+                    , disabled model.claudeLoading
+                    ]
+                    []
+                ]
+            , button
+                [ onClick SendClaudePrompt
+                , class "submit-button"
+                , disabled (String.isEmpty model.claudePrompt || model.claudeLoading)
+                ]
+                [ if model.claudeLoading then
+                    text "Asking Claude..."
+                  else
+                    text "Send to Claude"
+                ]
+            , div [ class "claude-info" ]
+                [ p [] [ text "Claude will respond to your prompt and the conversation will be saved as a document." ]
+                , p [] [ text "You can then search, edit, or reference it like any other document." ]
+                ]
+            ]
         ]
 
 

@@ -127,3 +127,12 @@ encodeUpdate title content docType =
                 ]
     in
     Encode.object fields
+
+
+encodeClaude : String -> Encode.Value
+encodeClaude prompt =
+    Encode.object
+        [ ( "prompt", Encode.string prompt )
+        , ( "max_tokens", Encode.int 1000 )
+        , ( "temperature", Encode.float 0.7 )
+        ]

@@ -7,3 +7,5 @@ sqlalchemy
 fastapi
 uvicorn
 httpx
+psutil
+anthropic
