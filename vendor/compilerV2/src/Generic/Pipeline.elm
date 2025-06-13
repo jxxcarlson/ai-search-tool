@@ -75,7 +75,6 @@ fixTable block lang parse =
             case lang of
                 MicroLaTeXLang ->
                     prepareTableLaTeX parse (String.join "\n" block.body)
-                        |> Debug.log "@@:prepareTableLaTeX"
 
                 EnclosureLang ->
                     prepareTableL0 parse (String.join "\n" block.body)
@@ -88,13 +87,9 @@ fixTable block lang parse =
 
 fixTable_ : List Expression -> List Expression
 fixTable_ exprs =
-    let
-        _ =
-            Debug.log "@@:fixTable_:EXPR (IN)" exprs
-    in
     case List.head exprs of
         Just (Fun "table" innerExprs meta) ->
-            [ Fun "table" (fixInner innerExprs |> List.map fixRow) meta ] |> Debug.log "@@:fixTable_:EXPR (OUT)"
+            [ Fun "table" (fixInner innerExprs |> List.map fixRow) meta ]
 
         _ ->
             exprs
@@ -164,10 +159,8 @@ prepareTableLaTeX parse str =
                 |> List.filter (\s -> compress s /= "")
                 |> List.map (\r -> "\\row{" ++ inner r ++ "}")
                 |> (\rows -> "\\table{" ++ String.join "" rows ++ "}")
-                |> Debug.log "@@:prepareTableLaTeX:CELLS"
     in
     parse cells
-        |> Debug.log "@@:prepareTableLaTeX:PARSE"
 
 
 prepareTableL0 : (String -> List Expression) -> String -> List Expression

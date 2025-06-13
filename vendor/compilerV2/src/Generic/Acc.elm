@@ -981,7 +981,8 @@ extractFootnote : Maybe String -> String -> Expression -> Maybe TermData2
 extractFootnote mSourceId id_ expr =
     case expr of
         Fun "footnote" [ Text content { begin, end, index, id } ] _ ->
-            Just { term = content, loc = { begin = begin, end = end, id = id, mSourceId = mSourceId } } |> Debug.log ("@@TermData " ++ id ++ ", " ++ id_)
+            Just { term = content, loc = { begin = begin, end = end, id = id, mSourceId = mSourceId } }
+
 
         _ ->
             Nothing

@@ -2,20 +2,24 @@ module Main exposing (main)
 
 import Api
 import Browser
+import Element
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
-import Json.Decode as Json
 import Http
 import Json.Decode as Decode
-import Markdown.Parser
 import Markdown.Html
+import Markdown.Parser
 import Markdown.Renderer
 import Models exposing (..)
-import Task
-import Time
 import Random
 import Random.List
+import ScriptaV2.APISimple
+import ScriptaV2.Compiler
+import ScriptaV2.Language
+import ScriptaV2.Msg exposing (MarkupMsg)
+import Task
+import Time
 
 
 type alias Model =
@@ -104,6 +108,7 @@ type Msg
     | LoadClusters
     | GotClusters (Result Http.Error ClusterResponse)
     | SelectDocumentFromCluster String
+    | ScriptaDocument ScriptaV2.Msg.MarkupMsg
 
 
 type alias Flags =
@@ -199,7 +204,7 @@ update msg model =
         DocumentDeleted result ->
             case result of
                 Ok _ ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , error = Nothing
                         , selectedDocument = Nothing
@@ -296,8 +301,11 @@ update msg model =
 
         GotCurrentTime time ->
             let
-                seed = Random.initialSeed (Time.posixToMillis time)
-                ( randomDocs, _ ) = Random.step (shuffleAndTake 10 model.documents) seed
+                seed =
+                    Random.initialSeed (Time.posixToMillis time)
+
+                ( randomDocs, _ ) =
+                    Random.step (shuffleAndTake 10 model.documents) seed
             in
             ( { model | randomDocuments = randomDocs }, Cmd.none )
 
@@ -331,7 +339,20 @@ update msg model =
         UpdateEditingDocType docType ->
             case model.editingDocument of
                 Just editing ->
-                    ( { model | editingDocument = Just { editing | docType = if String.isEmpty docType then Nothing else Just docType } }, Cmd.none )
+                    ( { model
+                        | editingDocument =
+                            Just
+                                { editing
+                                    | docType =
+                                        if String.isEmpty docType then
+                                            Nothing
+
+                                        else
+                                            Just docType
+                                }
+                      }
+                    , Cmd.none
+                    )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -340,11 +361,11 @@ update msg model =
             case model.editingDocument of
                 Just editing ->
                     ( { model | loading = True }
-                    , Api.updateDocument model.config 
-                        editing.id 
-                        (Just editing.title) 
-                        (Just editing.content) 
-                        editing.docType 
+                    , Api.updateDocument model.config
+                        editing.id
+                        (Just editing.title)
+                        (Just editing.content)
+                        editing.docType
                         DocumentUpdated
                     )
 
@@ -360,6 +381,7 @@ update msg model =
                                 ( Just doc, Just editing ) ->
                                     if doc.id == editing.id then
                                         Just { doc | title = editing.title }
+
                                     else
                                         model.selectedDocument
 
@@ -403,6 +425,7 @@ update msg model =
         SendClaudePrompt ->
             if String.isEmpty model.claudePrompt then
                 ( model, Cmd.none )
+
             else
                 ( { model | claudeLoading = True, error = Nothing }
                 , Api.askClaude model.config model.claudePrompt ClaudeResponseReceived
@@ -411,7 +434,7 @@ update msg model =
         ClaudeResponseReceived result ->
             case result of
                 Ok document ->
-                    ( { model 
+                    ( { model
                         | claudeLoading = False
                         , claudeResponse = Just document
                         , error = Nothing
@@ -423,11 +446,11 @@ update msg model =
                     ( { model | claudeLoading = False, error = Just (httpErrorToString error) }
                     , Cmd.none
                     )
-        
+
         SaveClaudeResponse ->
             case model.claudeResponse of
                 Just document ->
-                    ( { model 
+                    ( { model
                         | claudePrompt = ""
                         , claudeResponse = Nothing
                         , selectedDocument = Just document
@@ -436,48 +459,51 @@ update msg model =
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
-                
+
                 Nothing ->
                     ( model, Cmd.none )
-        
+
         NewClaudeQuestion ->
-            ( { model 
+            ( { model
                 | claudePrompt = ""
                 , claudeResponse = Nothing
               }
             , Cmd.none
             )
-        
+
         LoadClusters ->
             ( { model | clusterLoading = True, view = ClustersView }
             , Api.getClusters model.config Nothing GotClusters
             )
-        
+
         GotClusters result ->
             case result of
                 Ok clusterResponse ->
-                    ( { model 
+                    ( { model
                         | clusterLoading = False
                         , clusters = Just clusterResponse
                         , error = Nothing
                       }
                     , Cmd.none
                     )
-                
+
                 Err error ->
                     ( { model | clusterLoading = False, error = Just (httpErrorToString error) }
                     , Cmd.none
                     )
-        
+
         SelectDocumentFromCluster docId ->
             case List.filter (\doc -> doc.id == docId) model.documents of
                 doc :: _ ->
                     ( { model | selectedDocument = Just doc, view = DocumentView }
                     , Cmd.none
                     )
-                
+
                 [] ->
                     ( model, Cmd.none )
+
+        ScriptaDocument _ ->
+            ( model, Cmd.none )
 
 
 httpErrorToString : Http.Error -> String
@@ -525,7 +551,7 @@ view model =
 
             ClaudeView ->
                 viewClaude model
-                
+
             ClustersView ->
                 viewClusters model
         ]
@@ -600,6 +626,7 @@ viewDocumentCard doc =
                 Nothing ->
                     text ""
             ]
+
         -- Tags removed from API
         , div [ class "content-preview" ] [ text (truncate 150 doc.content) ]
         ]
@@ -628,6 +655,7 @@ viewSearchResult result =
         , case result.similarityScore of
             Just score ->
                 div [ class "similarity" ] [ text (formatPercent score ++ " match") ]
+
             Nothing ->
                 text ""
         , div [ class "snippet" ] [ text (truncate 150 result.content) ]
@@ -642,6 +670,7 @@ viewDocument model =
                 Just editing ->
                     if editing.id == doc.id then
                         viewEditingDocument editing
+
                     else
                         viewReadOnlyDocument model doc
 
@@ -650,6 +679,58 @@ viewDocument model =
 
         Nothing ->
             div [] [ text "No document selected" ]
+
+
+type alias ScriptaDocInfo =
+    { justSavedClaude : Bool
+    , lang : ScriptaV2.Language.Language
+    , createdAt : Maybe String
+    , docType : Maybe String
+    , title : String
+    , sourceText : String
+    }
+
+
+viewScriptaDocument : Bool -> ScriptaDocInfo -> Html Msg
+viewScriptaDocument justSavedClaude scripta =
+    let
+        params =
+            { lang = ScriptaV2.Language.EnclosureLang
+            , docWidth = 500
+            , editCount = 1
+            , selectedId = "selectedId"
+            , idsOfOpenNodes = []
+            , filter = ScriptaV2.Compiler.NoFilter
+            }
+    in
+    div [ class "document-view" ]
+        [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
+        , h2 [] [ text scripta.title ]
+        , div [ class "document-meta" ]
+            [ span [ class "created-at" ] [ text ("Created: " ++ formatDate scripta.createdAt) ]
+            , case scripta.docType of
+                Just dt ->
+                    span [ class "category" ] [ text ("Type: " ++ dt) ]
+
+                Nothing ->
+                    text ""
+            ]
+        , div [ class "document-content" ]
+            (ScriptaV2.APISimple.compile params scripta.sourceText
+                |> List.map (Element.map ScriptaDocument >> Element.layout [])
+            )
+        , if justSavedClaude then
+            div [ class "document-actions", style "margin-top" "2rem" ]
+                [ button
+                    [ onClick (ChangeView ClaudeView)
+                    , class "submit-button"
+                    ]
+                    [ text "Ask another question" ]
+                ]
+
+          else
+            text ""
+        ]
 
 
 viewReadOnlyDocument : Model -> Document -> Html Msg
@@ -674,12 +755,13 @@ viewReadOnlyDocument model doc =
             [ renderMarkdown doc.content ]
         , if model.justSavedClaude then
             div [ class "document-actions", style "margin-top" "2rem" ]
-                [ button 
+                [ button
                     [ onClick (ChangeView ClaudeView)
                     , class "submit-button"
-                    ] 
+                    ]
                     [ text "Ask another question" ]
                 ]
+
           else
             text ""
         ]
@@ -776,6 +858,7 @@ viewAddDocument model =
                     ]
                     []
                 ]
+
             -- Tags input removed
             , button
                 [ onClick AddDocument
@@ -827,7 +910,7 @@ viewClaude model =
                             ]
                         ]
                     ]
-            
+
             Nothing ->
                 div [ class "claude-form" ]
                     [ div [ class "form-group" ]
@@ -849,6 +932,7 @@ viewClaude model =
                         ]
                         [ if model.claudeLoading then
                             text "Asking Claude..."
+
                           else
                             text "Send to Claude"
                         ]
@@ -899,6 +983,7 @@ formatDate maybeDate =
     case maybeDate of
         Just dateStr ->
             formatDateTime dateStr
+
         Nothing ->
             "Unknown"
 
@@ -908,54 +993,103 @@ formatDateTime isoString =
     -- For now, we'll do a simple formatting
     -- ISO format example: "2025-06-12T15:30:45.123456"
     let
-        parts = String.split "T" isoString
-        datePart = List.head parts |> Maybe.withDefault ""
-        timePart = List.head (List.drop 1 parts) |> Maybe.withDefault ""
-        
+        parts =
+            String.split "T" isoString
+
+        datePart =
+            List.head parts |> Maybe.withDefault ""
+
+        timePart =
+            List.head (List.drop 1 parts) |> Maybe.withDefault ""
+
         -- Parse date
-        dateParts = String.split "-" datePart
-        year = List.head dateParts |> Maybe.withDefault ""
-        month = List.head (List.drop 1 dateParts) |> Maybe.withDefault ""
-        day = List.head (List.drop 2 dateParts) |> Maybe.withDefault ""
-        
+        dateParts =
+            String.split "-" datePart
+
+        year =
+            List.head dateParts |> Maybe.withDefault ""
+
+        month =
+            List.head (List.drop 1 dateParts) |> Maybe.withDefault ""
+
+        day =
+            List.head (List.drop 2 dateParts) |> Maybe.withDefault ""
+
         -- Parse time
-        timeWithoutMs = String.split "." timePart |> List.head |> Maybe.withDefault ""
-        timeParts = String.split ":" timeWithoutMs
-        hour = List.head timeParts |> Maybe.andThen String.toInt |> Maybe.withDefault 0
-        minute = List.head (List.drop 1 timeParts) |> Maybe.withDefault "00"
-        
+        timeWithoutMs =
+            String.split "." timePart |> List.head |> Maybe.withDefault ""
+
+        timeParts =
+            String.split ":" timeWithoutMs
+
+        hour =
+            List.head timeParts |> Maybe.andThen String.toInt |> Maybe.withDefault 0
+
+        minute =
+            List.head (List.drop 1 timeParts) |> Maybe.withDefault "00"
+
         -- Convert to 12-hour format
-        (hour12, ampm) =
+        ( hour12, ampm ) =
             if hour == 0 then
-                (12, "am")
+                ( 12, "am" )
+
             else if hour < 12 then
-                (hour, "am")
+                ( hour, "am" )
+
             else if hour == 12 then
-                (12, "pm")
+                ( 12, "pm" )
+
             else
-                (hour - 12, "pm")
-                
-        monthName = 
+                ( hour - 12, "pm" )
+
+        monthName =
             case month of
-                "01" -> "January"
-                "02" -> "February"
-                "03" -> "March"
-                "04" -> "April"
-                "05" -> "May"
-                "06" -> "June"
-                "07" -> "July"
-                "08" -> "August"
-                "09" -> "September"
-                "10" -> "October"
-                "11" -> "November"
-                "12" -> "December"
-                _ -> month
-                
+                "01" ->
+                    "January"
+
+                "02" ->
+                    "February"
+
+                "03" ->
+                    "March"
+
+                "04" ->
+                    "April"
+
+                "05" ->
+                    "May"
+
+                "06" ->
+                    "June"
+
+                "07" ->
+                    "July"
+
+                "08" ->
+                    "August"
+
+                "09" ->
+                    "September"
+
+                "10" ->
+                    "October"
+
+                "11" ->
+                    "November"
+
+                "12" ->
+                    "December"
+
+                _ ->
+                    month
+
         -- Remove leading zero from day
-        dayNum = String.toInt day |> Maybe.map String.fromInt |> Maybe.withDefault day
+        dayNum =
+            String.toInt day |> Maybe.map String.fromInt |> Maybe.withDefault day
     in
     if String.isEmpty datePart then
         isoString
+
     else
         monthName ++ " " ++ dayNum ++ ", " ++ year ++ " " ++ String.fromInt hour12 ++ ":" ++ minute ++ " " ++ ampm
 
@@ -972,12 +1106,13 @@ truncate maxLength str =
 sortDocumentsByDate : List Document -> List Document
 sortDocumentsByDate documents =
     List.sortBy
-        (\doc -> 
+        (\doc ->
             case doc.createdAt of
                 Just date ->
                     -- Negate the timestamp to sort in descending order
                     -- (most recent first)
                     -(dateToComparable date)
+
                 Nothing ->
                     0
         )
@@ -993,7 +1128,8 @@ dateToComparable dateStr =
         |> String.replace "T" ""
         |> String.replace ":" ""
         |> String.replace "." ""
-        |> String.left 14  -- Take only up to seconds
+        |> String.left 14
+        -- Take only up to seconds
         |> String.toFloat
         |> Maybe.withDefault 0
 
@@ -1001,8 +1137,11 @@ dateToComparable dateStr =
 formatPercent : Float -> String
 formatPercent score =
     let
-        percent = score * 100
-        rounded = toFloat (round (percent * 100)) / 100
+        percent =
+            score * 100
+
+        rounded =
+            toFloat (round (percent * 100)) / 100
     in
     String.fromFloat rounded ++ "%"
 
@@ -1013,6 +1152,7 @@ viewClusters model =
         [ h2 [] [ text "Document Clusters" ]
         , if model.clusterLoading then
             div [ class "loading" ] [ text "Analyzing document clusters..." ]
+
           else
             case model.clusters of
                 Just clusterResponse ->
@@ -1024,7 +1164,7 @@ viewClusters model =
                         , div [ class "clusters-grid" ]
                             (List.map (viewCluster model) clusterResponse.clusters)
                         ]
-                
+
                 Nothing ->
                     div [ class "empty-state" ] [ text "No clusters loaded. Click 'Clusters' to analyze." ]
         ]
@@ -1036,27 +1176,27 @@ viewCluster model cluster =
         representativeDoc =
             List.filter (\doc -> doc.id == cluster.representativeDocumentId) model.documents
                 |> List.head
-        
+
         representativeTitle =
             case representativeDoc of
                 Just doc ->
                     doc.title
-                
+
                 Nothing ->
                     "Unknown"
-        
+
         totalDocs =
             case model.clusters of
                 Just clusterResponse ->
                     clusterResponse.totalDocuments
-                
+
                 Nothing ->
                     0
     in
     div [ class "cluster-card" ]
         [ h3 [] [ text (String.fromInt (cluster.clusterId + 1) ++ ". " ++ cluster.clusterName ++ " (" ++ String.fromInt cluster.size ++ "/" ++ String.fromInt totalDocs ++ ")") ]
-        , p [ class "cluster-representative" ] 
-            [ text ("Representative: " ++ representativeTitle) 
+        , p [ class "cluster-representative" ]
+            [ text ("Representative: " ++ representativeTitle)
             ]
         , div [ class "cluster-documents" ]
             [ h4 [] [ text "Documents:" ]
@@ -1069,17 +1209,17 @@ viewCluster model cluster =
 viewClusterDocument : ClusterDocument -> Html Msg
 viewClusterDocument doc =
     li []
-        [ a 
+        [ a
             [ href "#"
             , onClick (SelectDocumentFromCluster doc.id)
             , style "cursor" "pointer"
             , style "color" "#2563eb"
-            ] 
+            ]
             [ text doc.title ]
         , case doc.docType of
             Just docType ->
                 span [ class "doc-type-badge" ] [ text (" (" ++ docType ++ ")") ]
-            
+
             Nothing ->
                 text ""
         ]
@@ -1106,6 +1246,7 @@ onEnter msg =
         isEnter code =
             if code == 13 then
                 Decode.succeed msg
+
             else
                 Decode.fail "not ENTER"
     in

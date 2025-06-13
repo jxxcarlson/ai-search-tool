@@ -215,7 +215,6 @@ nextStep state_ =
             let
                 currentLine =
                     Line.classify (getPosition rawLine state) state.lineNumber rawLine
-                        |> Debug.log "CLASSIFY"
             in
             if state.inVerbatimBlock then
                 case ClassifyBlock.classify (currentLine.content ++ "\n") of
@@ -241,10 +240,6 @@ nexStepAux : { indent : Int, prefix : String, content : String, lineNumber : Int
 nexStepAux currentLine mTopLabel state =
     case ClassifyBlock.classify (currentLine.content ++ "\n") of
         CBeginBlock label ->
-            let
-                _ =
-                    Debug.log "1." ( label, currentLine.lineNumber )
-            in
             if List.member label verbatimBlocks then
                 Loop ({ state | inVerbatimBlock = True, label = "CBeginBlock 3" } |> dispatchBeginBlock state.idPrefix state.outerCount (CBeginBlock label) currentLine)
 
@@ -252,11 +247,6 @@ nexStepAux currentLine mTopLabel state =
                 Loop ({ state | label = "CBeginBlock 3" } |> dispatchBeginBlock state.idPrefix state.outerCount (CBeginBlock label) currentLine)
 
         CEndBlock label ->
-            let
-                _ =
-                    Debug.log "2." ( label, currentLine.lineNumber )
-            in
-            -- TODO: changed, review
             if List.member (state.labelStack |> List.reverse |> List.head |> Maybe.map .classification) [ Just <| CBeginBlock "code" ] then
                 { state | label = "CEndBlock 2" } |> endBlockOnMatch Nothing (CBeginBlock "code") currentLine |> Loop
 
@@ -279,10 +269,6 @@ nexStepAux currentLine mTopLabel state =
                 endBlock (CEndBlock label) currentLine { state | label = "CEndBlock 5" }
 
         CSpecialBlock label ->
-            let
-                _ =
-                    Debug.log "3." ( label, currentLine.lineNumber )
-            in
             -- TODO: review all the List.member clauses
             if List.member (List.head state.labelStack |> Maybe.map .classification) [ Just <| CBeginBlock "code", Just CMathBlockDelim ] then
                 Loop state
@@ -291,11 +277,6 @@ nexStepAux currentLine mTopLabel state =
                 Loop <| handleSpecialBlock (CSpecialBlock label) currentLine state
 
         CMathBlockDelim ->
-            let
-                _ =
-                    Debug.log "4." currentLine.lineNumber
-            in
-            -- TODO: changed, review
             case List.head state.labelStack of
                 Nothing ->
                     -- TODO: should we indeed set the inVerbatimBlock flag to True here?
@@ -313,17 +294,9 @@ nexStepAux currentLine mTopLabel state =
                         Loop (state |> dispatchBeginBlock state.idPrefix state.outerCount CMathBlockDelim currentLine)
 
         CMathBlockBegin ->
-            let
-                _ =
-                    Debug.log "9." currentLine.lineNumber
-            in
             Loop ({ state | inVerbatimBlock = True } |> dispatchBeginBlock state.idPrefix state.outerCount CMathBlockBegin currentLine)
 
         CMathBlockEnd ->
-            let
-                _ =
-                    Debug.log "10." currentLine.lineNumber
-            in
             case List.head state.labelStack of
                 Just label ->
                     if label.classification == CMathBlockBegin then
@@ -336,17 +309,9 @@ nexStepAux currentLine mTopLabel state =
                     Loop state
 
         CVerbatimBlockDelim ->
-            let
-                _ =
-                    Debug.log "11." currentLine.lineNumber
-            in
             Loop (state |> handleVerbatimBlock currentLine)
 
         CPlainText ->
-            let
-                _ =
-                    Debug.log "12." ( currentLine.lineNumber, state.labelStack )
-            in
             case List.head state.labelStack of
                 Just label ->
                     case label.classification of
@@ -360,10 +325,6 @@ nexStepAux currentLine mTopLabel state =
                     plainText state currentLine
 
         CEmpty ->
-            let
-                _ =
-                    Debug.log "13." currentLine.lineNumber
-            in
             emptyLine currentLine state
 
 

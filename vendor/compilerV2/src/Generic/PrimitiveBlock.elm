@@ -354,10 +354,9 @@ raiseBlockLevelsIfNeeded_ lastBlock blocks =
                 let
                     candidateBlocksToRaise =
                         List.Extra.takeWhile (acceptBlock tag) blocks
-                            |> Debug.log ("@##@ CANDIDATES (" ++ tag ++ ")")
 
-                    _ =
-                        Debug.log "@##@ N CANDIDATES" (List.length candidateBlocksToRaise)
+
+
 
                     raisedBlocks_ =
                         List.map (\b -> { b | indent = b.indent + 2 }) candidateBlocksToRaise
