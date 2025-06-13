@@ -103,3 +103,12 @@ updateDocument config docId title content docType msg =
         , timeout = Nothing
         , tracker = Nothing
         }
+
+
+askClaude : Config -> String -> (Result Http.Error Document -> msg) -> Cmd msg
+askClaude config prompt msg =
+    Http.post
+        { url = config.apiUrl ++ "/claude"
+        , body = Http.jsonBody (encodeClaude prompt)
+        , expect = Http.expectJson msg documentDecoder
+        }

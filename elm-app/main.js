@@ -6508,6 +6508,8 @@ var $author$project$Api$getDocuments = F2(
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
 		{
+			claudeLoading: false,
+			claudePrompt: '',
 			config: $author$project$Api$Config(flags.apiUrl),
 			documents: _List_Nil,
 			editingDocument: $elm$core$Maybe$Nothing,
@@ -6528,6 +6530,9 @@ var $author$project$Main$init = function (flags) {
 };
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
+var $author$project$Main$ClaudeResponseReceived = function (a) {
+	return {$: 'ClaudeResponseReceived', a: a};
+};
 var $author$project$Main$DocumentAdded = function (a) {
 	return {$: 'DocumentAdded', a: a};
 };
@@ -6612,6 +6617,33 @@ var $author$project$Api$addDocument = F5(
 					A3($author$project$Models$encodeDocument, title, content, docType)),
 				expect: A2($elm$http$Http$expectJson, msg, $author$project$Models$documentDecoder),
 				url: config.apiUrl + '/documents'
+			});
+	});
+var $elm$json$Json$Encode$float = _Json_wrap;
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $author$project$Models$encodeClaude = function (prompt) {
+	return $elm$json$Json$Encode$object(
+		_List_fromArray(
+			[
+				_Utils_Tuple2(
+				'prompt',
+				$elm$json$Json$Encode$string(prompt)),
+				_Utils_Tuple2(
+				'max_tokens',
+				$elm$json$Json$Encode$int(1000)),
+				_Utils_Tuple2(
+				'temperature',
+				$elm$json$Json$Encode$float(0.7))
+			]));
+};
+var $author$project$Api$askClaude = F3(
+	function (config, prompt, msg) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$jsonBody(
+					$author$project$Models$encodeClaude(prompt)),
+				expect: A2($elm$http$Http$expectJson, msg, $author$project$Models$documentDecoder),
+				url: config.apiUrl + '/claude'
 			});
 	});
 var $elm$http$Http$expectBytesResponse = F2(
@@ -6723,7 +6755,6 @@ var $elm$time$Time$posixToMillis = function (_v0) {
 	var millis = _v0.a;
 	return millis;
 };
-var $elm$json$Json$Encode$int = _Json_wrap;
 var $author$project$Models$encodeSearch = F2(
 	function (query, limit) {
 		return $elm$json$Json$Encode$object(
@@ -7464,7 +7495,7 @@ var $author$project$Main$update = F2(
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
-			default:
+			case 'DocumentUpdated':
 				var result = msg.a;
 				if (result.$ === 'Ok') {
 					var updatedDoc = result.a;
@@ -7487,6 +7518,46 @@ var $author$project$Main$update = F2(
 								error: $elm$core$Maybe$Just(
 									$author$project$Main$httpErrorToString(error)),
 								loading: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'UpdateClaudePrompt':
+				var prompt = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{claudePrompt: prompt}),
+					$elm$core$Platform$Cmd$none);
+			case 'SendClaudePrompt':
+				return $elm$core$String$isEmpty(model.claudePrompt) ? _Utils_Tuple2(model, $elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{claudeLoading: true, error: $elm$core$Maybe$Nothing}),
+					A3($author$project$Api$askClaude, model.config, model.claudePrompt, $author$project$Main$ClaudeResponseReceived));
+			default:
+				var result = msg.a;
+				if (result.$ === 'Ok') {
+					var document = result.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								claudeLoading: false,
+								claudePrompt: '',
+								error: $elm$core$Maybe$Nothing,
+								selectedDocument: $elm$core$Maybe$Just(document),
+								view: $author$project$Main$DocumentView
+							}),
+						A2($author$project$Api$getDocuments, model.config, $author$project$Main$GotDocuments));
+				} else {
+					var error = result.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								claudeLoading: false,
+								error: $elm$core$Maybe$Just(
+									$author$project$Main$httpErrorToString(error))
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
@@ -7697,6 +7768,103 @@ var $author$project$Main$viewAddDocument = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Add Document')
+							]))
+					]))
+			]));
+};
+var $author$project$Main$SendClaudePrompt = {$: 'SendClaudePrompt'};
+var $author$project$Main$UpdateClaudePrompt = function (a) {
+	return {$: 'UpdateClaudePrompt', a: a};
+};
+var $elm$html$Html$p = _VirtualDom_node('p');
+var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
+var $author$project$Main$viewClaude = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('claude-view')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h2,
+				_List_Nil,
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Ask Claude')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('claude-form')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('form-group')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Your prompt:')
+									])),
+								A2(
+								$elm$html$Html$textarea,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$value(model.claudePrompt),
+										$elm$html$Html$Events$onInput($author$project$Main$UpdateClaudePrompt),
+										$elm$html$Html$Attributes$placeholder('Ask Claude anything...'),
+										$elm$html$Html$Attributes$class('form-textarea'),
+										$elm$html$Html$Attributes$rows(10),
+										$elm$html$Html$Attributes$disabled(model.claudeLoading)
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Main$SendClaudePrompt),
+								$elm$html$Html$Attributes$class('submit-button'),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$String$isEmpty(model.claudePrompt) || model.claudeLoading)
+							]),
+						_List_fromArray(
+							[
+								model.claudeLoading ? $elm$html$Html$text('Asking Claude...') : $elm$html$Html$text('Send to Claude')
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('claude-info')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$p,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Claude will respond to your prompt and the conversation will be saved as a document.')
+									])),
+								A2(
+								$elm$html$Html$p,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('You can then search, edit, or reference it like any other document.')
+									]))
 							]))
 					]))
 			]));
@@ -8158,7 +8326,6 @@ var $dillonkearns$elm_markdown$Markdown$Html$oneOf = function (decoders) {
 				}),
 			unwrappedDecoders));
 };
-var $elm$html$Html$p = _VirtualDom_node('p');
 var $elm$html$Html$pre = _VirtualDom_node('pre');
 var $elm$core$List$singleton = function (value) {
 	return _List_fromArray(
@@ -17219,6 +17386,7 @@ var $author$project$Main$viewError = function (maybeError) {
 	}
 };
 var $author$project$Main$AddDocumentView = {$: 'AddDocumentView'};
+var $author$project$Main$ClaudeView = {$: 'ClaudeView'};
 var $author$project$Main$LoadRandomDocuments = {$: 'LoadRandomDocuments'};
 var $author$project$Main$LoadStats = {$: 'LoadStats'};
 var $author$project$Main$SearchDocuments = {$: 'SearchDocuments'};
@@ -17238,7 +17406,6 @@ var $author$project$Main$onEnter = function (msg) {
 		'keydown',
 		A2($elm$json$Json$Decode$andThen, isEnter, $author$project$Main$keyCode));
 };
-var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
 var $author$project$Main$viewHeader = function (model) {
 	return A2(
 		$elm$html$Html$header,
@@ -17283,6 +17450,18 @@ var $author$project$Main$viewHeader = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Add Document')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$ChangeView($author$project$Main$ClaudeView)),
+								$elm$html$Html$Attributes$class('nav-button')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Ask Claude')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -17688,8 +17867,10 @@ var $author$project$Main$view = function (model) {
 						return $author$project$Main$viewAddDocument(model);
 					case 'StatsView':
 						return $author$project$Main$viewStats(model);
-					default:
+					case 'RandomView':
 						return $author$project$Main$viewRandomDocuments(model);
+					default:
+						return $author$project$Main$viewClaude(model);
 				}
 			}()
 			]));

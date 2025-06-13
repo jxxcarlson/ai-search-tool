@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
+import os
+from anthropic import Anthropic
+from datetime import datetime
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 
@@ -21,6 +24,12 @@ class UpdateRequest(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     doc_type: Optional[str] = None
+
+
+class ClaudeRequest(BaseModel):
+    prompt: str
+    max_tokens: Optional[int] = 1000
+    temperature: Optional[float] = 0.7
 
 
 class SearchRequest(BaseModel):
@@ -54,6 +63,15 @@ app.add_middleware(
 print("Loading document store and model...")
 document_store = DocumentStoreV2(load_model=True)
 print("Model loaded and ready!")
+
+# Initialize Anthropic client
+anthropic_client = None
+api_key = os.getenv("ANTHROPIC_API_KEY")
+if api_key:
+    anthropic_client = Anthropic(api_key=api_key)
+    print("Claude API initialized!")
+else:
+    print("Warning: ANTHROPIC_API_KEY not found. Claude features will be disabled.")
 
 
 @app.get("/")
@@ -146,6 +164,52 @@ def update_document(doc_id: str, request: UpdateRequest):
         if documents:
             return DocumentResponse(**documents[0])
     raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+
+
+@app.post("/claude", response_model=DocumentResponse)
+def ask_claude(request: ClaudeRequest):
+    """Send a prompt to Claude and save the response as a document"""
+    if not anthropic_client:
+        raise HTTPException(status_code=503, detail="Claude API not configured. Set ANTHROPIC_API_KEY environment variable.")
+    
+    try:
+        # Call Claude API
+        message = anthropic_client.messages.create(
+            model="claude-3-haiku-20240307",  # Using Haiku for faster responses
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            messages=[
+                {"role": "user", "content": request.prompt}
+            ]
+        )
+        
+        # Extract the response content
+        response_content = message.content[0].text
+        
+        # Create a title from the first line or first 50 chars of the prompt
+        title = request.prompt.split('\n')[0][:50]
+        if len(title) == 50 and len(request.prompt) > 50:
+            title += "..."
+        
+        # Create a document with the prompt and response
+        doc_content = f"## Prompt\n\n{request.prompt}\n\n## Claude's Response\n\n{response_content}"
+        
+        # Add to document store
+        doc_id = document_store.add_document(
+            title=f"Claude: {title}",
+            content=doc_content,
+            doc_type="claude-response"
+        )
+        
+        # Get the created document
+        documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+        if documents:
+            return DocumentResponse(**documents[0])
+        
+        raise HTTPException(status_code=500, detail="Failed to save Claude response")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Claude API error: {str(e)}")
 
 
 if __name__ == "__main__":
