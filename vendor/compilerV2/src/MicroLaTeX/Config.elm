@@ -1,0 +1,1 @@
+module MicroLaTeX.Config exposing (..)

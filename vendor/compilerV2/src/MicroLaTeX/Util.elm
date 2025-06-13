@@ -1,0 +1,294 @@
+module MicroLaTeX.Util exposing
+    ( depth
+    , dropLast
+    , eraseItem
+    , getBracedItems
+    , getBracketedItem
+    , getBracketedItems
+    , getItem
+    , getMarkdownImageArgs
+    , getMicroLaTeXItem
+    , macroValParser
+    , macroValParserX
+    , many
+    , middle
+    , normalizedWord
+    , size
+    , transformLabel
+    )
+
+import Parser exposing ((|.), (|=), Parser, Step(..), loop, map, oneOf, spaces, succeed)
+import Regex
+import Tools.Utility as Utility
+import Tree exposing (Tree)
+
+
+normalizedWord : List String -> String
+normalizedWord words =
+    words
+        |> List.map
+            (String.toLower
+                >> Utility.removeNonAlphaNum
+            )
+        |> String.join "-"
+
+
+dropLast : List a -> List a
+dropLast list =
+    let
+        n =
+            List.length list
+    in
+    List.take (n - 1) list
+
+
+middle : List a -> List a
+middle list =
+    list |> List.drop 1 |> dropLast
+
+
+transformLabel : String -> String
+transformLabel str =
+    let
+        normalize m =
+            m |> List.map (Maybe.withDefault "") |> String.join "" |> String.trim
+    in
+    Utility.userReplace "\\[label(.*)\\]" (\m -> "\\label{" ++ (m.submatches |> normalize) ++ "}") str
+
+
+{-| Apply a parser zero or more times and return a list of the results.
+-}
+many : Parser a -> Parser (List a)
+many p =
+    loop [] (manyHelp p)
+
+
+manyHelp : Parser a -> List a -> Parser (Step (List a) (List a))
+manyHelp p vs =
+    oneOf
+        [ succeed (\v -> Loop (v :: vs))
+            |= p
+            |. spaces
+        , succeed ()
+            |> map (\_ -> Done (List.reverse vs))
+        ]
+
+
+depth : Tree a -> Int
+depth t =
+    let
+        c =
+            Tree.children t
+    in
+    if c == [] then
+        0
+
+    else
+        1 + maxiumumPositiveInteger (List.map depth c)
+
+
+maxiumumPositiveInteger : List Int -> Int
+maxiumumPositiveInteger ints =
+    List.foldl (\i acc -> max i acc) 0 ints
+
+
+size : Tree a -> Int
+size t =
+    let
+        c =
+            Tree.children t
+    in
+    if c == [] then
+        1
+
+    else
+        1 + List.sum (List.map size c)
+
+
+{-|
+
+    > getItem MicroLaTeXLang "foo" "... whatever ... \\foo{bar} ... whatever else ..."
+    "bar" : String
+
+    > getItem L0Lang "foo" "... whatever ... [foo bar] ... whatever else ..."
+    "bar" : String
+
+-}
+getItem : String -> String -> String
+getItem key str =
+    runParser (macroValParser key) str ""
+
+
+getMicroLaTeXItem : String -> String -> Maybe String
+getMicroLaTeXItem key str =
+    case Parser.run (macroValParser key) str of
+        Ok val ->
+            Just val
+
+        Err _ ->
+            Nothing
+
+
+{-|
+
+    > getBracketedItems "ho ho ho! [foo] [bar]"
+    ["foo","bar"] : List String
+
+-}
+getBracketedItems : String -> List String
+getBracketedItems str =
+    case Parser.run (many bracketedItemParser) str of
+        Ok val ->
+            val
+
+        Err _ ->
+            []
+
+
+getBracketedItem : String -> Maybe String
+getBracketedItem str =
+    case Parser.run bracketedItemParser str of
+        Ok val ->
+            Just val
+
+        Err _ ->
+            Nothing
+
+
+getBracedItems : String -> List String
+getBracedItems str =
+    case Parser.run (many bracedItemParser) str of
+        Ok val ->
+            val
+
+        Err _ ->
+            []
+
+
+{-|
+
+    > eraseItem MicroLaTeXLang "foo" "bar" "... whatever\\foo{bar}\n, whatever else ..."
+    "... whatever, whatever else ..." : String
+
+    > eraseItem L0Lang "foo" "bar" "... whateve[foo bar]\n, whatever else ..."
+    "... whatever, whatever else ..." : String
+
+-}
+eraseItem : String -> String -> String -> String
+eraseItem key value str =
+    let
+        target =
+            "\\" ++ key ++ "{" ++ value ++ "}\n"
+    in
+    String.replace target "" str
+
+
+runParser stringParser str default =
+    case Parser.run stringParser str of
+        Ok s ->
+            s
+
+        Err _ ->
+            default
+
+
+{-|
+
+    > Expression.run macroValParser "... whatever ... \\foo{bar} ... whatever else ..."
+    Ok "bar"
+
+-}
+macroValParser : String -> Parser String
+macroValParser macroName =
+    (Parser.succeed String.slice
+        |. Parser.chompUntil ("\\" ++ macroName ++ "{")
+        |. Parser.symbol ("\\" ++ macroName ++ "{")
+        |. Parser.spaces
+        |= Parser.getOffset
+        |. Parser.chompUntilEndOr "}"
+        |= Parser.getOffset
+        |= Parser.getSource
+    )
+        |> Parser.map String.trim
+
+
+macroValParserX : String -> Parser String
+macroValParserX macroName =
+    (Parser.succeed String.slice
+        |. Parser.chompUntil ("\\" ++ macroName ++ "{")
+        |. Parser.symbol ("\\" ++ macroName ++ "{")
+        |. Parser.spaces
+        |= Parser.getOffset
+        |. Parser.chompUntilEndOr "!!!!"
+        |= Parser.getOffset
+        |= Parser.getSource
+    )
+        |> Parser.map String.trim
+
+
+getMarkdownImageArgs str =
+    case Parser.run markdownImageParser str of
+        Ok result ->
+            Just result
+
+        Err _ ->
+            Nothing
+
+
+markdownImageParser : Parser ( String, String )
+markdownImageParser =
+    bracketedItemParser |> Parser.andThen (\a -> parenthesizedItemParser |> Parser.map (\b -> ( a, b )))
+
+
+bracketedItemParser : Parser String
+bracketedItemParser =
+    itemParser "[" "]"
+
+
+parenthesizedItemParser : Parser String
+parenthesizedItemParser =
+    itemParser "(" ")"
+
+
+bracedItemParser : Parser String
+bracedItemParser =
+    itemParser "{" "}"
+
+
+bracedItemsParser : Parser (List String)
+bracedItemsParser =
+    many bracedItemParser
+
+
+itemParser : String -> String -> Parser String
+itemParser leftDelimiter rightDelimiter =
+    (Parser.succeed String.slice
+        |. Parser.chompUntil leftDelimiter
+        |. Parser.symbol leftDelimiter
+        |. Parser.spaces
+        |= Parser.getOffset
+        |. Parser.chompUntil rightDelimiter
+        |= Parser.getOffset
+        |= Parser.getSource
+    )
+        |> Parser.map String.trim
+
+
+{-|
+
+    > Expression.run macroValParser "... whatever ... \\foo{bar} ... whatever else ..."
+    Ok "bar"
+
+-}
+keyValParser : String -> Parser String
+keyValParser key =
+    (Parser.succeed String.slice
+        |. Parser.chompUntil ("[" ++ key ++ " ")
+        |. Parser.symbol ("[" ++ key ++ " ")
+        |. Parser.spaces
+        |= Parser.getOffset
+        |. Parser.chompUntil "]"
+        |= Parser.getOffset
+        |= Parser.getSource
+    )
+        |> Parser.map String.trim

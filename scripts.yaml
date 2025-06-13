@@ -1,0 +1,21 @@
+scripts:
+
+#  update-vendor:
+#     - cp -r /Users/jxxcarlson/dev/bluesky/microlatex/src vendor/L0/
+
+#  backfill:
+#      - cp -r vendor/L0/src /Users/jxxcarlson/dev/bluesky/microlatex/
+
+
+
+#  vendor:
+#    - rm -rf vendor/compiler/
+#    - mkdir -p vendor/compiler/
+#    - cp -r /Users/carlson/dev/lamdera/bluesky/scripta-compiler/src/* vendor/compiler/
+#    - cp -r /Users/carlson/dev/lamdera/bluesky/my-elm-book/src/UILibrary/* vendor/uiStuff/UILibrary/
+
+  vendor:
+    - rm -rf vendor/compilerV2/src
+    - mkdir -p vendor/compilerV2/src
+    - cp -r /Users/carlson/dev/elm-work/scripta/scripta-compiler-v2/src* vendor/compilerV2/
+
