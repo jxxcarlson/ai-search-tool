@@ -47,4 +47,4 @@ This ensures that the rendered text is properly updated.
 -}
 compile : ScriptaV2.Compiler.CompilerParameters -> String -> List (Element MarkupMsg)
 compile params sourceText =
-    ScriptaV2.Compiler.compile params (String.lines sourceText) |> ScriptaV2.Compiler.view params.docWidth
+    ScriptaV2.Compiler.compile params (String.lines sourceText) |> ScriptaV2.Compiler.viewBodyOnly params.docWidth

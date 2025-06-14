@@ -16,19 +16,30 @@
 </head>
 <body>
     <div id="app"></div>
-    <script src="main.js"></script>
-    <script src="katex.js"></script>
-
+    
+    <!-- KaTeX CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-    <script defer src="https://cdn.jsdelivr.net/npm/webfontloader@1.6.28/webfontloader.js" integrity="sha256-4O4pS1SH31ZqrSO2A/2QJTVjTPqVe+jnYgOWUVr7EEc=" crossorigin="anonymous"></script>
-
+    
+    <!-- Load Elm app first -->
+    <script src="main.js"></script>
+    
+    <!-- Load KaTeX initialization script -->
+    <script src="katex.js"></script>
+    
+    <!-- Initialize everything -->
     <script>
+        // Initialize Elm app
         var app = Elm.Main.init({
             node: document.getElementById('app'),
             flags: {
                 apiUrl: "http://localhost:8010"
             }
         });
+        
+        // Initialize KaTeX after Elm app is ready
+        if (typeof init !== 'undefined') {
+            init(app);
+        }
     </script>
 </body>
 </html>

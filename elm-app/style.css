@@ -262,6 +262,35 @@
     font-family: monospace;
 }
 
+/* Scripta-specific styles to match markdown rendering */
+.document-content #rendered-text {
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+}
+
+.document-content #rendered-text p {
+    margin-bottom: 1rem;
+}
+
+.document-content #rendered-text h1,
+.document-content #rendered-text h2,
+.document-content #rendered-text h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Ensure math rendering (KaTeX) fits well */
+.document-content .katex {
+    font-size: 1.1em;
+}
+
+.document-content .katex-display {
+    margin: 1rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
 .delete-button {
     background-color: var(--danger-color);
     color: white;

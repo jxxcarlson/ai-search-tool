@@ -2,6 +2,8 @@ module Main exposing (main)
 
 import Api
 import Browser
+import Browser.Dom
+import Browser.Events
 import Element
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -14,6 +16,7 @@ import Markdown.Renderer
 import Models exposing (..)
 import Random
 import Random.List
+import Render.Helper
 import ScriptaV2.APISimple
 import ScriptaV2.Compiler
 import ScriptaV2.Language
@@ -41,6 +44,7 @@ type alias Model =
     , justSavedClaude : Bool
     , clusters : Maybe ClusterResponse
     , clusterLoading : Bool
+    , windowWidth : Int
     }
 
 
@@ -62,6 +66,9 @@ docTypeToString docType =
 
         DTLaTeX ->
             "ltx"
+
+        DTClaudeResponse ->
+            "claude-response"
 
 
 type alias EditingDocument =
@@ -122,12 +129,15 @@ type Msg
     | GotClusters (Result Http.Error ClusterResponse)
     | SelectDocumentFromCluster String
     | ScriptaDocument ScriptaV2.Msg.MarkupMsg
+    | WindowResized Int Int
+    | GotViewport Browser.Dom.Viewport
 
 
 type DocType
     = DTMarkDown
     | DTScripta
     | DTLaTeX
+    | DTClaudeResponse
 
 
 docTypeFromString : String -> DocType
@@ -141,6 +151,9 @@ docTypeFromString str =
 
         "ltx" ->
             DTLaTeX
+
+        "claude-response" ->
+            DTClaudeResponse
 
         _ ->
             DTMarkDown
@@ -171,8 +184,12 @@ init flags =
       , justSavedClaude = False
       , clusters = Nothing
       , clusterLoading = False
+      , windowWidth = 800 -- Default width
       }
-    , Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
+    , Cmd.batch
+        [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
+        , Task.perform GotViewport Browser.Dom.getViewport
+        ]
     )
 
 
@@ -545,6 +562,12 @@ update msg model =
         ScriptaDocument _ ->
             ( model, Cmd.none )
 
+        WindowResized width _ ->
+            ( { model | windowWidth = width }, Cmd.none )
+
+        GotViewport viewport ->
+            ( { model | windowWidth = round viewport.viewport.width }, Cmd.none )
+
 
 httpErrorToString : Http.Error -> String
 httpErrorToString error =
@@ -690,10 +713,6 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    let
-        _ =
-            Debug.log "SearchResult" ( result.title, result.docType )
-    in
     div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, index = result.index }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
@@ -743,49 +762,18 @@ type alias ScriptaDocInfo =
     }
 
 
-viewScriptaDocument : Bool -> Document -> Html Msg
-viewScriptaDocument justSavedClaude doc =
-    let
-        params =
-            { lang = ScriptaV2.Language.EnclosureLang
-            , docWidth = 500
-            , editCount = 1
-            , selectedId = "selectedId"
-            , idsOfOpenNodes = []
-            , filter = ScriptaV2.Compiler.NoFilter
-            }
-    in
-    div [ class "document-view" ]
-        [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
-        , h2 [] [ text doc.title ]
-        , div [ class "document-meta" ]
-            [ span [ class "created-at" ] [ text ("Created: " ++ formatDate doc.createdAt) ]
-            , span [ class "category" ] [ text ("Type: " ++ (doc.docType |> Maybe.withDefault "md")) ]
-            ]
-        , div [ class "document-content" ]
-            (ScriptaV2.APISimple.compile params doc.content
-                |> List.map (Element.map ScriptaDocument >> Element.layout [])
-            )
-        , if justSavedClaude then
-            div [ class "document-actions", style "margin-top" "2rem" ]
-                [ button
-                    [ onClick (ChangeView ClaudeView)
-                    , class "submit-button"
-                    ]
-                    [ text "Ask another question" ]
-                ]
-
-          else
-            text ""
-        ]
-
-
 viewReadOnlyDocument : Model -> Document -> Html Msg
 viewReadOnlyDocument model doc =
     let
+        -- Calculate document width based on window width with some padding
+        -- Accounting for margins, padding, and other UI elements
+        docWidth =
+            Basics.max 300 (model.windowWidth - 200)
+
+        -- Minimum 300px, leave 200px for margins/padding
         params =
             { lang = ScriptaV2.Language.EnclosureLang
-            , docWidth = 500
+            , docWidth = docWidth
             , editCount = 1
             , selectedId = "selectedId"
             , idsOfOpenNodes = []
@@ -808,21 +796,38 @@ viewReadOnlyDocument model doc =
             [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
             , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
             ]
-        , div [ class "document-content" ]
-            (case doc.docType of
-                Just "scr" ->
-                    ScriptaV2.APISimple.compile params doc.content
-                        |> List.map (Element.map ScriptaDocument >> Element.layout [])
+        , case doc.docType of
+            Just "scr" ->
+                div
+                    [ class "document-content"
+                    , Html.Attributes.style "width" (String.fromInt (docWidth - 80) ++ "px")
+                    , Html.Attributes.style "font-size" (String.fromInt 12 ++ "px")
+                    ]
+                    (ScriptaV2.APISimple.compile params doc.content
+                        |> List.map (Element.map ScriptaDocument >> Element.layout [ Render.Helper.htmlId "rendered-text" ])
+                    )
 
-                Just "md" ->
-                    -- Fallback to Markdown rendering for other types
+            Just "ltx" ->
+                div
+                    [ class "document-content"
+                    , Html.Attributes.style "width" (String.fromInt (docWidth - 80) ++ "px")
+                    , Html.Attributes.style "font-size" (String.fromInt 12 ++ "px")
+                    ]
+                    (ScriptaV2.APISimple.compile { params | lang = ScriptaV2.Language.MicroLaTeXLang } doc.content
+                        |> List.map (Element.map ScriptaDocument >> Element.layout [ Render.Helper.htmlId "rendered-text" ])
+                    )
+
+            Just "md" ->
+                div [ class "document-content" ]
                     [ renderMarkdown doc.content ]
 
-                _ ->
+            Just "claude-response" ->
+                div [ class "document-content" ]
+                    [ renderMarkdown doc.content ]
+
+            _ ->
+                div [ class "document-content" ]
                     [ Html.text "Unsupported document type" ]
-            )
-        , div [ class "document-content" ]
-            [ renderMarkdown doc.content ]
         , if model.justSavedClaude then
             div [ class "document-actions", style "margin-top" "2rem" ]
                 [ button
@@ -1334,11 +1339,16 @@ shuffleAndTake n list =
         |> Random.map (List.take n)
 
 
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    Browser.Events.onResize WindowResized
+
+
 main : Program Flags Model Msg
 main =
     Browser.element
         { init = init
         , update = update
         , view = view
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         }
