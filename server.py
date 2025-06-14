@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
@@ -11,6 +12,14 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import time
 from collections import defaultdict
+import PyPDF2
+import io
+import shutil
+import platform
+import subprocess
+from pdf2image import convert_from_path
+from PIL import Image
+import json
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 
@@ -46,7 +55,7 @@ class ClusterRequest(BaseModel):
     num_clusters: Optional[int] = None  # If None, will use silhouette score to find optimal
     min_clusters: Optional[int] = 2
     max_clusters: Optional[int] = 10
-    naming_method: Optional[str] = "v3"  # "v1", "v2", or "v3", defaults to v3
+    naming_method: Optional[str] = "v4"  # "v1", "v2", "v3", or "v4", defaults to v4
 
 
 class ClusterResponse(BaseModel):
@@ -54,6 +63,10 @@ class ClusterResponse(BaseModel):
     num_clusters: int
     silhouette_score: float
     total_documents: int
+
+
+class OpenPDFRequest(BaseModel):
+    filename: str
 
 
 class DocumentResponse(BaseModel):
@@ -231,6 +244,204 @@ def ask_claude(request: ClaudeRequest):
         raise HTTPException(status_code=500, detail=f"Claude API error: {str(e)}")
 
 
+def generate_pdf_thumbnails(pdf_path: str, thumbnail_dir: str, filename_base: str, max_pages: int = 10) -> List[str]:
+    """Generate thumbnail images for PDF pages"""
+    try:
+        # Try to import and use pdf2image
+        from pdf2image import convert_from_path
+        from pdf2image.exceptions import PDFInfoNotInstalledError, PDFPageCountError, PDFSyntaxError
+        
+        try:
+            # Convert PDF pages to images
+            images = convert_from_path(pdf_path, dpi=72, first_page=1, last_page=max_pages)
+            
+            thumbnail_paths = []
+            for i, image in enumerate(images):
+                # Create thumbnail (max width/height of 200px)
+                thumbnail = image.copy()
+                thumbnail.thumbnail((200, 200), Image.Resampling.LANCZOS)
+                
+                # Save thumbnail
+                thumb_filename = f"{filename_base}_page_{i+1}.jpg"
+                thumb_path = os.path.join(thumbnail_dir, thumb_filename)
+                thumbnail.save(thumb_path, "JPEG", quality=85)
+                thumbnail_paths.append(thumb_filename)
+                
+            return thumbnail_paths
+        except (PDFInfoNotInstalledError, PDFPageCountError) as e:
+            print(f"Poppler not installed or PDF error. Thumbnail generation skipped: {e}")
+            return []
+    except ImportError:
+        print("pdf2image not installed. Thumbnail generation skipped.")
+        return []
+    except Exception as e:
+        print(f"Error generating thumbnails: {e}")
+        return []
+
+
+@app.post("/upload-pdf", response_model=DocumentResponse)
+async def upload_pdf(file: UploadFile = File(...)):
+    """Upload a PDF file and extract its text for indexing"""
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    
+    try:
+        # Read PDF content
+        pdf_content = await file.read()
+        
+        # Extract text from PDF
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
+        text_content = ""
+        num_pages = len(pdf_reader.pages)
+        
+        for page_num in range(num_pages):
+            page = pdf_reader.pages[page_num]
+            text_content += page.extract_text() + "\n\n"
+        
+        # Clean up the text
+        text_content = text_content.strip()
+        
+        if not text_content:
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF")
+        
+        # Generate a unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{timestamp}_{file.filename}"
+        pdf_path = f"storage/pdfs/{safe_filename}"
+        
+        # Save the original PDF
+        with open(pdf_path, "wb") as pdf_file:
+            pdf_file.write(pdf_content)
+        
+        # Generate thumbnails
+        thumbnail_dir = "storage/pdf_thumbnails"
+        os.makedirs(thumbnail_dir, exist_ok=True)
+        filename_base = safe_filename.rsplit('.', 1)[0]
+        thumbnail_paths = generate_pdf_thumbnails(pdf_path, thumbnail_dir, filename_base)
+        
+        # Create document with extracted text
+        doc_id = document_store.add_document(
+            title=file.filename,
+            content=text_content,
+            doc_type="pdf"
+        )
+        
+        # Store the PDF path and metadata in the document content
+        metadata = {
+            "filename": safe_filename,
+            "pages": num_pages,
+            "thumbnails": thumbnail_paths
+        }
+        updated_content = f"[PDF_FILE:{safe_filename}]\n[PDF_META:{json.dumps(metadata)}]\n\n{text_content}"
+        document_store.update_document(doc_id, content=updated_content)
+        
+        # Get the created document
+        documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+        if documents:
+            return DocumentResponse(**documents[0])
+        
+        raise HTTPException(status_code=500, detail="Failed to save PDF document")
+        
+    except PyPDF2.errors.PdfReadError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF file: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+
+
+@app.get("/pdf/{filename}")
+async def get_pdf(filename: str):
+    """Serve a PDF file for viewing"""
+    pdf_path = f"storage/pdfs/{filename}"
+    
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={
+            "Content-Disposition": f"inline; filename={filename}",
+            "X-Content-Type-Options": "nosniff"
+        }
+    )
+
+
+@app.get("/pdf/thumbnail/{filename}")
+async def get_pdf_thumbnail(filename: str):
+    """Serve a PDF thumbnail image"""
+    thumb_path = f"storage/pdf_thumbnails/{filename}"
+    
+    if not os.path.exists(thumb_path):
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    
+    return FileResponse(
+        path=thumb_path,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "public, max-age=3600"
+        }
+    )
+
+
+@app.get("/pdf/thumbnails/{pdf_filename}")
+async def get_pdf_thumbnails(pdf_filename: str):
+    """Get list of thumbnails for a PDF"""
+    # Extract base filename
+    base_name = pdf_filename.rsplit('.', 1)[0]
+    thumbnail_dir = "storage/pdf_thumbnails"
+    
+    thumbnails = []
+    if os.path.exists(thumbnail_dir):
+        for file in os.listdir(thumbnail_dir):
+            if file.startswith(base_name) and file.endswith('.jpg'):
+                thumbnails.append(file)
+    
+    thumbnails.sort()  # Sort by page number
+    return {"thumbnails": thumbnails}
+
+
+@app.post("/open-pdf-native")
+async def open_pdf_native(request: OpenPDFRequest):
+    """Open a PDF file in the system's native PDF viewer"""
+    pdf_path = f"storage/pdfs/{request.filename}"
+    
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    
+    try:
+        system = platform.system()
+        
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", pdf_path], check=True)
+        elif system == "Windows":
+            os.startfile(pdf_path)
+        elif system == "Linux":
+            # Try xdg-open first (works on most desktop environments)
+            try:
+                subprocess.run(["xdg-open", pdf_path], check=True)
+            except:
+                # Fallback to other common PDF viewers
+                for viewer in ["evince", "okular", "firefox", "chromium"]:
+                    try:
+                        subprocess.run([viewer, pdf_path], check=True)
+                        break
+                    except:
+                        continue
+                else:
+                    raise Exception("No PDF viewer found")
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported OS: {system}")
+        
+        return {"message": f"Opening PDF in {system} native viewer", "filename": request.filename}
+        
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open PDF: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error opening PDF: {str(e)}")
+
+
 def generate_cluster_name(documents: List[dict]) -> str:
     """Generate a descriptive name for a cluster based on document titles"""
     if not documents:
@@ -361,6 +572,20 @@ def generate_cluster_name(documents: List[dict]) -> str:
     else:
         # Last resort: just use the first part of the title
         return first_title.split()[:4][-1] if first_title else "Unnamed"
+
+
+def generate_cluster_name_v4(documents, doc_store, representative_id):
+    """
+    Simply use the representative document's title as the cluster name.
+    This is the simplest and often most effective approach.
+    """
+    # Find the representative document
+    for doc in documents:
+        if doc['id'] == representative_id:
+            return doc.get('title', 'Untitled')
+    
+    # Fallback if we can't find the representative
+    return "Unnamed Cluster"
 
 
 def generate_cluster_name_v3(documents, doc_store, representative_id):
@@ -649,11 +874,19 @@ def get_document_clusters(request: ClusterRequest):
                 cluster_naming_stats['v2_times'].append(elapsed)
                 cluster_naming_stats['v2_total'] += elapsed
                 cluster_naming_stats['v2_count'] += 1
-            else:  # v3
+            elif request.naming_method == "v3":
                 start_time = time.time()
                 cluster_name = generate_cluster_name_v3(cluster_docs, document_store, representative_id)
                 elapsed = time.time() - start_time
                 # Store v3 stats in v2 slots for now (we can add v3_times later if needed)
+                cluster_naming_stats['v2_times'].append(elapsed)
+                cluster_naming_stats['v2_total'] += elapsed
+                cluster_naming_stats['v2_count'] += 1
+            else:  # v4 (default)
+                start_time = time.time()
+                cluster_name = generate_cluster_name_v4(cluster_docs, document_store, representative_id)
+                elapsed = time.time() - start_time
+                # Store v4 stats in v2 slots for now
                 cluster_naming_stats['v2_times'].append(elapsed)
                 cluster_naming_stats['v2_total'] += elapsed
                 cluster_naming_stats['v2_count'] += 1

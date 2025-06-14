@@ -10,3 +10,7 @@ httpx
 psutil
 anthropic
 scikit-learn
+PyPDF2
+python-multipart
+pdf2image
+Pillow

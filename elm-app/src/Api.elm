@@ -1,5 +1,6 @@
 module Api exposing (..)
 
+import File exposing (File)
 import Http
 import Json.Decode as Decode
 import Models exposing (..)
@@ -120,4 +121,24 @@ getClusters config numClusters msg =
         { url = config.apiUrl ++ "/clusters"
         , body = Http.jsonBody (encodeClusterRequest numClusters)
         , expect = Http.expectJson msg clusterResponseDecoder
+        }
+
+
+uploadPDF : Config -> File -> (Result Http.Error Document -> msg) -> Cmd msg
+uploadPDF config file msg =
+    Http.post
+        { url = config.apiUrl ++ "/upload-pdf"
+        , body = Http.multipartBody
+            [ Http.filePart "file" file
+            ]
+        , expect = Http.expectJson msg documentDecoder
+        }
+
+
+openPDFNative : Config -> String -> msg -> Cmd msg
+openPDFNative config filename msg =
+    Http.post
+        { url = config.apiUrl ++ "/open-pdf-native"
+        , body = Http.jsonBody (encodeOpenPDF filename)
+        , expect = Http.expectWhatever (always msg)
         }

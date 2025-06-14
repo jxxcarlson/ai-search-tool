@@ -332,6 +332,30 @@
     background-color: var(--primary-hover);
 }
 
+.edit-button:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.edit-button:disabled:hover {
+    background-color: #9ca3af;
+}
+
+.open-button {
+    background-color: #10b981;
+    color: white;
+    border: none;
+    padding: 0.4rem 1.2rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
+}
+
+.open-button:hover {
+    background-color: #059669;
+}
+
 .save-button {
     background-color: #10b981;
     color: white;
@@ -633,6 +657,131 @@
 .doc-type-badge {
     color: var(--text-secondary);
     font-size: 0.75rem;
+}
+
+/* PDF Upload Styles */
+.form-tabs h3 {
+    margin: 1.5rem 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.125rem;
+}
+
+.pdf-upload-section {
+    background-color: var(--bg-secondary);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-top: 1rem;
+}
+
+.upload-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.upload-button:hover {
+    background-color: var(--primary-hover);
+}
+
+.selected-file {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.pdf-info {
+    margin-top: 1rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* PDF Content Display */
+.pdf-content {
+    margin-top: 1rem;
+}
+
+.pdf-content iframe {
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow);
+}
+
+/* Removed pdf-viewer-options styles since button is now in document-actions */
+
+.pdf-iframe-container {
+    margin-top: 0;
+}
+
+.pdf-iframe-container h4 {
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.pdf-iframe-container iframe {
+    background-color: #f5f5f5;
+    min-height: 600px;
+}
+
+/* PDF Thumbnails */
+.pdf-thumbnails {
+    padding: 1rem;
+}
+
+.pdf-thumbnails h4 {
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+}
+
+.thumbnail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.pdf-thumbnail {
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.pdf-thumbnail:hover {
+    transform: scale(1.05);
+}
+
+.thumbnail-image {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    box-shadow: var(--shadow);
+}
+
+.thumbnail-label {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.pdf-iframe-fallback {
+    padding: 2rem;
+    text-align: center;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.pdf-iframe-fallback p {
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
 }
 
 @media (max-width: 768px) {

@@ -198,3 +198,8 @@ encodeClusterRequest numClusters =
             Encode.object [ ( "num_clusters", Encode.int n ) ]
         Nothing ->
             Encode.object []
+
+
+encodeOpenPDF : String -> Encode.Value
+encodeOpenPDF filename =
+    Encode.object [ ( "filename", Encode.string filename ) ]

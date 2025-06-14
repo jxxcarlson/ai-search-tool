@@ -5,6 +5,8 @@ import Browser
 import Browser.Dom
 import Browser.Events
 import Element
+import File exposing (File)
+import File.Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -45,6 +47,7 @@ type alias Model =
     , clusters : Maybe ClusterResponse
     , clusterLoading : Bool
     , windowWidth : Int
+    , selectedPDF : Maybe File
     }
 
 
@@ -69,6 +72,9 @@ docTypeToString docType =
 
         DTClaudeResponse ->
             "claude-response"
+        
+        DTPDF ->
+            "pdf"
 
 
 type alias EditingDocument =
@@ -131,6 +137,11 @@ type Msg
     | ScriptaDocument ScriptaV2.Msg.MarkupMsg
     | WindowResized Int Int
     | GotViewport Browser.Dom.Viewport
+    | SelectPDFFile
+    | PDFSelected File
+    | PDFUploaded (Result Http.Error Document)
+    | UploadPDF
+    | OpenPDFNative String
 
 
 type DocType
@@ -138,6 +149,7 @@ type DocType
     | DTScripta
     | DTLaTeX
     | DTClaudeResponse
+    | DTPDF
 
 
 docTypeFromString : String -> DocType
@@ -154,6 +166,9 @@ docTypeFromString str =
 
         "claude-response" ->
             DTClaudeResponse
+        
+        "pdf" ->
+            DTPDF
 
         _ ->
             DTMarkDown
@@ -260,6 +275,10 @@ inferTitle content docType =
         DTClaudeResponse ->
             -- Claude responses might have markdown titles
             inferTitle content DTMarkDown
+        
+        DTPDF ->
+            -- PDF titles should be provided during upload
+            Nothing
 
 
 type alias Flags =
@@ -288,6 +307,7 @@ init flags =
       , clusters = Nothing
       , clusterLoading = False
       , windowWidth = 800 -- Default width
+      , selectedPDF = Nothing
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -692,6 +712,50 @@ update msg model =
 
         GotViewport viewport ->
             ( { model | windowWidth = round viewport.viewport.width }, Cmd.none )
+        
+        SelectPDFFile ->
+            ( model
+            , File.Select.file ["application/pdf"] PDFSelected
+            )
+        
+        PDFSelected file ->
+            ( { model | selectedPDF = Just file }, Cmd.none )
+        
+        UploadPDF ->
+            case model.selectedPDF of
+                Just file ->
+                    ( { model | loading = True }
+                    , Api.uploadPDF model.config file PDFUploaded
+                    )
+                    
+                Nothing ->
+                    ( model, Cmd.none )
+        
+        PDFUploaded result ->
+            case result of
+                Ok document ->
+                    ( { model 
+                        | loading = False
+                        , error = Nothing
+                        , selectedPDF = Nothing
+                        , view = DocumentView
+                        , selectedDocument = Just document
+                      }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+                    
+                Err error ->
+                    ( { model | loading = False, error = Just (httpErrorToString error) }
+                    , Cmd.none
+                    )
+        
+        OpenPDFNative filename ->
+            let
+                _ = Debug.log "OpenPDFNative called with filename" filename
+            in
+            ( model
+            , Api.openPDFNative model.config filename NoOp
+            )
 
 
 httpErrorToString : Http.Error -> String
@@ -887,22 +951,124 @@ type alias ScriptaDocInfo =
     }
 
 
+type alias PDFMetadata =
+    { filename : String
+    , pages : Int
+    , thumbnails : List String
+    }
+
+
+extractPDFFilename : String -> String
+extractPDFFilename content =
+    case String.indexes "[PDF_FILE:" content of
+        [] ->
+            ""
+            
+        index :: _ ->
+            let
+                afterMarker =
+                    String.dropLeft (index + 10) content
+                
+                endIndex =
+                    String.indexes "]" afterMarker
+                        |> List.head
+                        |> Maybe.withDefault 0
+                
+                filename =
+                    String.left endIndex afterMarker
+            in
+            filename
+
+
+extractPDFMetadata : String -> Maybe PDFMetadata
+extractPDFMetadata content =
+    case String.indexes "[PDF_META:" content of
+        [] ->
+            Nothing
+            
+        index :: _ ->
+            let
+                afterMarker =
+                    String.dropLeft (index + 10) content
+                
+                endIndex =
+                    String.indexes "]" afterMarker
+                        |> List.head
+                        |> Maybe.withDefault 0
+                
+                metaJson =
+                    String.left endIndex afterMarker
+                    
+                extractPages json =
+                    case String.indexes "\"pages\":" json of
+                        [] -> 0
+                        idx :: _ ->
+                            let
+                                afterField = String.dropLeft (idx + 8) json
+                            in
+                            afterField
+                                |> String.split ","
+                                |> List.head
+                                |> Maybe.andThen String.toInt
+                                |> Maybe.withDefault 0
+                                
+                extractThumbnails json =
+                    case String.indexes "\"thumbnails\":" json of
+                        [] -> []
+                        idx :: _ ->
+                            let
+                                afterField = String.dropLeft (idx + 13) json
+                            in
+                            case String.indexes "[" afterField of
+                                [] -> []
+                                arrIdx :: _ ->
+                                    let
+                                        afterBracket = String.dropLeft (arrIdx + 1) afterField
+                                        endIdx = String.indexes "]" afterBracket |> List.head |> Maybe.withDefault 0
+                                        arrayContent = String.left endIdx afterBracket
+                                    in
+                                    if String.isEmpty arrayContent then
+                                        []
+                                    else
+                                        arrayContent
+                                            |> String.split ","
+                                            |> List.map (String.trim >> String.replace "\"" "")
+                                
+                pages = extractPages metaJson
+                thumbnails = extractThumbnails metaJson
+                filename = extractPDFFilename content
+            in
+            if String.isEmpty filename then
+                Nothing
+            else
+                Just { filename = filename, pages = pages, thumbnails = thumbnails }
+
+
+viewThumbnail : String -> String -> Html Msg
+viewThumbnail apiUrl thumbFilename =
+    div [ class "pdf-thumbnail" ]
+        [ img 
+            [ src (apiUrl ++ "/pdf/thumbnail/" ++ thumbFilename)
+            , alt ("Page " ++ (thumbFilename |> String.split "_" |> List.reverse |> List.head |> Maybe.withDefault ""))
+            , class "thumbnail-image"
+            ]
+            []
+        , p [ class "thumbnail-label" ] 
+            [ text ("Page " ++ (thumbFilename 
+                |> String.split "_" 
+                |> List.reverse 
+                |> List.head 
+                |> Maybe.andThen (String.split "." >> List.head)
+                |> Maybe.withDefault ""))
+            ]
+        ]
+
+
 viewReadOnlyDocument : Model -> Document -> Html Msg
 viewReadOnlyDocument model doc =
     let
         -- Calculate document width based on window width with some padding
         -- Accounting for margins, padding, and other UI elements
-        _ =
-            Debug.log "viewReadOnlyDocument" ( doc.title, doc.docType )
-
-        _ =
-            case doc.docType of
-                Just dt ->
-                    Debug.log "docType is Just" dt
-
-                Nothing ->
-                    Debug.log "docType is Nothing" "nothing"
-
         docWidth =
             Basics.max 300 (model.windowWidth - 200)
 
@@ -929,9 +1095,24 @@ viewReadOnlyDocument model doc =
                     text ""
             ]
         , div [ class "document-actions" ]
-            [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
-            , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
-            ]
+            (case doc.docType of
+                Just "pdf" ->
+                    [ button [ onClick (OpenPDFNative (extractPDFFilename doc.content)), class "open-button" ] [ text "Open PDF" ]
+                    , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
+                    , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
+                    ]
+                    
+                _ ->
+                    if String.startsWith "[PDF_FILE:" doc.content then
+                        [ button [ onClick (OpenPDFNative (extractPDFFilename doc.content)), class "open-button" ] [ text "Open PDF" ]
+                        , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
+                        , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
+                        ]
+                    else
+                        [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
+                        , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
+                        ]
+            )
         , case doc.docType of
             Just "scr" ->
                 div
@@ -962,10 +1143,91 @@ viewReadOnlyDocument model doc =
             Just "claude-response" ->
                 div [ class "document-content" ]
                     [ renderMarkdown doc.content ]
+            
+            Just "pdf" ->
+                let
+                    filename = extractPDFFilename doc.content
+                in
+                if String.isEmpty filename then
+                    div [ class "document-content" ]
+                        [ text "PDF file not found" ]
+                else
+                    div [ class "document-content pdf-content" ]
+                        [ -- Try to extract thumbnail info
+                          case extractPDFMetadata doc.content of
+                            Just meta ->
+                                if List.isEmpty meta.thumbnails then
+                                    -- No thumbnails, show fallback message
+                                    div [ class "pdf-iframe-fallback" ]
+                                        [ p [] [ text "PDF viewer blocked by browser security settings." ]
+                                        , p [] [ text "Use the 'Open PDF' button above to view this document." ]
+                                        ]
+                                else
+                                    -- Show thumbnails
+                                    div [ class "pdf-thumbnails" ]
+                                        [ h4 [] [ text ("Pages: " ++ String.fromInt meta.pages) ]
+                                        , div [ class "thumbnail-grid" ]
+                                            (List.map (viewThumbnail model.config.apiUrl) meta.thumbnails)
+                                        ]
+                            
+                            Nothing ->
+                                -- No metadata, show fallback message
+                                div [ class "pdf-iframe-fallback" ]
+                                    [ p [] [ text "PDF viewer blocked by browser security settings." ]
+                                    , p [] [ text "Use the 'Open PDF' button above to view this document." ]
+                                    ]
+                        ]
 
             _ ->
-                div [ class "document-content" ]
-                    [ Html.text "Unsupported document type" ]
+                -- Check if this is a PDF by looking at content
+                if String.startsWith "[PDF_FILE:" doc.content then
+                    let
+                        -- Extract PDF filename from content
+                        pdfFilename = 
+                            case String.indexes "[PDF_FILE:" doc.content of
+                                [] ->
+                                    Nothing
+                                
+                                index :: _ ->
+                                    let
+                                        afterMarker =
+                                            String.dropLeft (index + 10) doc.content
+                                        
+                                        endIndex =
+                                            String.indexes "]" afterMarker
+                                                |> List.head
+                                                |> Maybe.withDefault 0
+                                        
+                                        filename =
+                                            String.left endIndex afterMarker
+                                    in
+                                    if String.isEmpty filename then
+                                        Nothing
+                                    else
+                                        Just filename
+                    in
+                    case pdfFilename of
+                        Just filename ->
+                            div [ class "document-content pdf-content" ]
+                                [ div [ class "pdf-iframe-container" ]
+                                    [ iframe
+                                        [ src (model.config.apiUrl ++ "/pdf/" ++ filename)
+                                        , Html.Attributes.style "width" "100%"
+                                        , Html.Attributes.style "height" "800px"
+                                        , Html.Attributes.style "border" "1px solid #ccc"
+                                        , Html.Attributes.attribute "sandbox" "allow-same-origin"
+                                        , Html.Attributes.type_ "application/pdf"
+                                        ]
+                                        []
+                                    ]
+                                ]
+                        
+                        Nothing ->
+                            div [ class "document-content" ]
+                                [ text "PDF file not found" ]
+                else
+                    div [ class "document-content" ]
+                        [ Html.text "Unsupported document type" ]
         , if model.justSavedClaude then
             div [ class "document-actions", style "margin-top" "2rem" ]
                 [ button
@@ -1040,45 +1302,81 @@ viewAddDocument : Model -> Html Msg
 viewAddDocument model =
     div [ class "add-document" ]
         [ h2 [] [ text "Add New Document" ]
-        , div [ class "form" ]
-            [ div [ class "form-group" ]
-                [ label [] [ text "Title" ]
-                , input
-                    [ type_ "text"
-                    , value model.newDocument.title
-                    , onInput UpdateNewDocTitle
-                    , class "form-input"
+        , div [ class "form-tabs" ]
+            [ h3 [] [ text "Option 1: Add Text Document" ]
+            , div [ class "form" ]
+                [ div [ class "form-group" ]
+                    [ label [] [ text "Title" ]
+                    , input
+                        [ type_ "text"
+                        , value model.newDocument.title
+                        , onInput UpdateNewDocTitle
+                        , class "form-input"
+                        ]
+                        []
                     ]
-                    []
-                ]
-            , div [ class "form-group" ]
-                [ label [] [ text "Content" ]
-                , textarea
-                    [ value model.newDocument.content
-                    , onInput UpdateNewDocContent
-                    , class "form-textarea"
-                    , rows 10
+                , div [ class "form-group" ]
+                    [ label [] [ text "Content" ]
+                    , textarea
+                        [ value model.newDocument.content
+                        , onInput UpdateNewDocContent
+                        , class "form-textarea"
+                        , rows 10
+                        ]
+                        []
                     ]
-                    []
-                ]
-            , div [ class "form-group" ]
-                [ label [] [ text "Document Type (optional)" ]
-                , input
-                    [ type_ "text"
-                    , value (docTypeToString model.newDocument.docType)
-                    , onInput UpdateNewDocType
-                    , class "form-input"
+                , div [ class "form-group" ]
+                    [ label [] [ text "Document Type (optional)" ]
+                    , input
+                        [ type_ "text"
+                        , value (docTypeToString model.newDocument.docType)
+                        , onInput UpdateNewDocType
+                        , class "form-input"
+                        ]
+                        []
                     ]
-                    []
+                , button
+                    [ onClick AddDocument
+                    , class "submit-button"
+                    , disabled (String.isEmpty model.newDocument.title || String.isEmpty model.newDocument.content)
+                    ]
+                    [ text "Add Document" ]
                 ]
-
-            -- Tags input removed
-            , button
-                [ onClick AddDocument
-                , class "submit-button"
-                , disabled (String.isEmpty model.newDocument.title || String.isEmpty model.newDocument.content)
+            , hr [ style "margin" "2rem 0" ] []
+            , h3 [] [ text "Option 2: Upload PDF" ]
+            , div [ class "pdf-upload-section" ]
+                [ case model.selectedPDF of
+                    Nothing ->
+                        button
+                            [ onClick SelectPDFFile
+                            , class "upload-button"
+                            ]
+                            [ text "Select PDF File" ]
+                    
+                    Just file ->
+                        div []
+                            [ p [ class "selected-file" ] 
+                                [ text ("Selected: " ++ File.name file) 
+                                ]
+                            , button
+                                [ onClick UploadPDF
+                                , class "submit-button"
+                                , disabled model.loading
+                                ]
+                                [ if model.loading then
+                                    text "Uploading..."
+                                  else
+                                    text "Upload PDF"
+                                ]
+                            , button
+                                [ onClick SelectPDFFile
+                                , class "cancel-button"
+                                ]
+                                [ text "Change File" ]
+                            ]
+                , p [ class "pdf-info" ] 
+                    [ text "PDF files will be indexed for search but displayed read-only." ]
                 ]
-                [ text "Add Document" ]
             ]
         ]
 
