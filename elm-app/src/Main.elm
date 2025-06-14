@@ -47,8 +47,21 @@ type alias Model =
 type alias NewDocument =
     { title : String
     , content : String
-    , docType : String
+    , docType : DocType
     }
+
+
+docTypeToString : DocType -> String
+docTypeToString docType =
+    case docType of
+        DTMarkDown ->
+            "md"
+
+        DTScripta ->
+            "scr"
+
+        DTLaTeX ->
+            "ltx"
 
 
 type alias EditingDocument =
@@ -111,6 +124,28 @@ type Msg
     | ScriptaDocument ScriptaV2.Msg.MarkupMsg
 
 
+type DocType
+    = DTMarkDown
+    | DTScripta
+    | DTLaTeX
+
+
+docTypeFromString : String -> DocType
+docTypeFromString str =
+    case String.toLower str of
+        "md" ->
+            DTMarkDown
+
+        "scr" ->
+            DTScripta
+
+        "ltx" ->
+            DTLaTeX
+
+        _ ->
+            DTMarkDown
+
+
 type alias Flags =
     { apiUrl : String
     }
@@ -126,7 +161,7 @@ init flags =
       , loading = False
       , error = Nothing
       , view = ListView
-      , newDocument = NewDocument "" "" ""
+      , newDocument = NewDocument "" "" DTMarkDown
       , stats = Nothing
       , editingDocument = Nothing
       , randomDocuments = []
@@ -235,25 +270,30 @@ update msg model =
 
         UpdateNewDocType value ->
             let
-                newDoc =
+                newDocument_ =
                     model.newDocument
+
+                docType =
+                    docTypeFromString value
             in
-            ( { model | newDocument = { newDoc | docType = value } }, Cmd.none )
+            ( { model | newDocument = { newDocument_ | docType = docType } }, Cmd.none )
 
         AddDocument ->
             let
                 docType =
-                    if String.isEmpty model.newDocument.docType then
-                        Nothing
+                    docTypeFromString "md" |> Just
 
-                    else
-                        Just model.newDocument.docType
+                --if String.isEmpty model.newDocument.docType then
+                --    Nothing
+                --
+                --else
+                --    Just model.newDocument.docType
             in
             ( { model | loading = True }
             , Api.addDocument model.config
                 model.newDocument.title
                 model.newDocument.content
-                docType
+                (Just "scr")
                 DocumentAdded
             )
 
@@ -264,7 +304,7 @@ update msg model =
                         | loading = False
                         , error = Nothing
                         , view = ListView
-                        , newDocument = NewDocument "" "" ""
+                        , newDocument = NewDocument "" "" DTMarkDown
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
@@ -650,8 +690,21 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
+    let
+        _ =
+            Debug.log "SearchResult" ( result.title, result.docType )
+    in
     div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, index = result.index }) ]
         [ h3 [] [ text result.title ]
+        , div [ class "document-meta" ]
+            [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
+            , case result.docType of
+                Just dt ->
+                    span [ class "category" ] [ text dt ]
+
+                Nothing ->
+                    text ""
+            ]
         , case result.similarityScore of
             Just score ->
                 div [ class "similarity" ] [ text (formatPercent score ++ " match") ]
@@ -682,17 +735,16 @@ viewDocument model =
 
 
 type alias ScriptaDocInfo =
-    { justSavedClaude : Bool
-    , lang : ScriptaV2.Language.Language
+    { lang : ScriptaV2.Language.Language
     , createdAt : Maybe String
-    , docType : Maybe String
+    , docType : DocType
     , title : String
     , sourceText : String
     }
 
 
-viewScriptaDocument : Bool -> ScriptaDocInfo -> Html Msg
-viewScriptaDocument justSavedClaude scripta =
+viewScriptaDocument : Bool -> Document -> Html Msg
+viewScriptaDocument justSavedClaude doc =
     let
         params =
             { lang = ScriptaV2.Language.EnclosureLang
@@ -705,18 +757,13 @@ viewScriptaDocument justSavedClaude scripta =
     in
     div [ class "document-view" ]
         [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
-        , h2 [] [ text scripta.title ]
+        , h2 [] [ text doc.title ]
         , div [ class "document-meta" ]
-            [ span [ class "created-at" ] [ text ("Created: " ++ formatDate scripta.createdAt) ]
-            , case scripta.docType of
-                Just dt ->
-                    span [ class "category" ] [ text ("Type: " ++ dt) ]
-
-                Nothing ->
-                    text ""
+            [ span [ class "created-at" ] [ text ("Created: " ++ formatDate doc.createdAt) ]
+            , span [ class "category" ] [ text ("Type: " ++ (doc.docType |> Maybe.withDefault "md")) ]
             ]
         , div [ class "document-content" ]
-            (ScriptaV2.APISimple.compile params scripta.sourceText
+            (ScriptaV2.APISimple.compile params doc.content
                 |> List.map (Element.map ScriptaDocument >> Element.layout [])
             )
         , if justSavedClaude then
@@ -735,6 +782,16 @@ viewScriptaDocument justSavedClaude scripta =
 
 viewReadOnlyDocument : Model -> Document -> Html Msg
 viewReadOnlyDocument model doc =
+    let
+        params =
+            { lang = ScriptaV2.Language.EnclosureLang
+            , docWidth = 500
+            , editCount = 1
+            , selectedId = "selectedId"
+            , idsOfOpenNodes = []
+            , filter = ScriptaV2.Compiler.NoFilter
+            }
+    in
     div [ class "document-view" ]
         [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
         , h2 [] [ text doc.title ]
@@ -751,6 +808,19 @@ viewReadOnlyDocument model doc =
             [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
             , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
             ]
+        , div [ class "document-content" ]
+            (case doc.docType of
+                Just "scr" ->
+                    ScriptaV2.APISimple.compile params doc.content
+                        |> List.map (Element.map ScriptaDocument >> Element.layout [])
+
+                Just "md" ->
+                    -- Fallback to Markdown rendering for other types
+                    [ renderMarkdown doc.content ]
+
+                _ ->
+                    [ Html.text "Unsupported document type" ]
+            )
         , div [ class "document-content" ]
             [ renderMarkdown doc.content ]
         , if model.justSavedClaude then
@@ -852,7 +922,7 @@ viewAddDocument model =
                 [ label [] [ text "Document Type (optional)" ]
                 , input
                     [ type_ "text"
-                    , value model.newDocument.docType
+                    , value (docTypeToString model.newDocument.docType)
                     , onInput UpdateNewDocType
                     , class "form-input"
                     ]
