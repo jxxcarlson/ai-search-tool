@@ -9,6 +9,8 @@ from datetime import datetime
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+import time
+from collections import defaultdict
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 
@@ -44,6 +46,7 @@ class ClusterRequest(BaseModel):
     num_clusters: Optional[int] = None  # If None, will use silhouette score to find optimal
     min_clusters: Optional[int] = 2
     max_clusters: Optional[int] = 10
+    naming_method: Optional[str] = "v3"  # "v1", "v2", or "v3", defaults to v3
 
 
 class ClusterResponse(BaseModel):
@@ -212,7 +215,7 @@ def ask_claude(request: ClaudeRequest):
         
         # Add to document store
         doc_id = document_store.add_document(
-            title=f"Claude: {title}",
+            title=title,
             content=doc_content,
             doc_type="claude-response"
         )
@@ -297,10 +300,8 @@ def generate_cluster_name(documents: List[dict]) -> str:
     for doc in documents:
         # Split title into words, handle punctuation
         import re
-        # Remove "Claude:" prefix if present
+        # Get document title
         title = doc['title']
-        if title.startswith('Claude:'):
-            title = title[7:].strip()
         
         # Remove punctuation and split into words
         words = re.findall(r'\b[a-zA-Z]+\b', title.lower())
@@ -362,6 +363,200 @@ def generate_cluster_name(documents: List[dict]) -> str:
         return first_title.split()[:4][-1] if first_title else "Unnamed"
 
 
+def generate_cluster_name_v3(documents, doc_store, representative_id):
+    """
+    Extract a meaningful phrase from the representative document.
+    Returns a descriptive phrase that captures the essence of the cluster.
+    """
+    import re
+    
+    # Find the representative document
+    representative_doc = None
+    for doc in documents:
+        if doc['id'] == representative_id:
+            representative_doc = doc
+            break
+    
+    if not representative_doc:
+        # Fallback if we can't find the representative
+        return generate_cluster_name_v2(documents, doc_store)
+    
+    content = representative_doc.get('content', '')
+    
+    # Try to find meaningful phrases in order of preference
+    
+    # 1. Look for a section heading (## or ###)
+    section_headings = re.findall(r'^#{2,3}\s+(.+)$', content, re.MULTILINE)
+    if section_headings:
+        # Use the first section heading, clean it up
+        heading = section_headings[0].strip()
+        if 10 <= len(heading) <= 50:  # Reasonable length
+            return heading
+    
+    # 2. Look for a strong statement (ending with period, not too long)
+    sentences = re.split(r'[.!?]\s+', content)
+    for sentence in sentences[:10]:  # Check first 10 sentences
+        sentence = sentence.strip()
+        # Skip very short or very long sentences
+        if 20 <= len(sentence) <= 60:
+            # Skip sentences that are questions or contain certain words
+            if not any(word in sentence.lower() for word in ['?', 'this', 'these', 'that', 'those', 'here', 'there']):
+                # Prefer sentences with key verbs or concepts
+                if any(word in sentence.lower() for word in ['is', 'are', 'defines', 'creates', 'provides', 'explains', 'shows', 'demonstrates']):
+                    return sentence
+    
+    # 3. Extract key noun phrases from the beginning
+    # Look for pattern: "The/A [adjective]* noun [preposition phrase]"
+    noun_phrases = re.findall(r'\b(?:The|A|An)\s+(?:\w+\s+){0,2}\w+\s+(?:of|for|in|with|about)\s+\w+', content[:500])
+    if noun_phrases:
+        phrase = noun_phrases[0]
+        if 15 <= len(phrase) <= 50:
+            return phrase
+    
+    # 4. Use the title if it's descriptive enough
+    title = representative_doc.get('title', '')
+    if title and 15 <= len(title) <= 50 and not title.lower().startswith('untitled'):
+        return title
+    
+    # 5. Fallback: Use first meaningful chunk of content
+    # Remove markdown formatting
+    clean_content = re.sub(r'[#*`\[\]()]', '', content[:200])
+    clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+    
+    if len(clean_content) > 30:
+        # Find a good breaking point
+        for i in range(min(50, len(clean_content)), 20, -1):
+            if clean_content[i] in ' ,:;-':
+                return clean_content[:i].strip() + "..."
+    
+    # Last resort: Use v2 algorithm
+    return generate_cluster_name_v2(documents, doc_store)
+
+
+def generate_cluster_name_v2(documents, doc_store):
+    """
+    Enhanced cluster naming that analyzes document content in addition to titles.
+    Returns a more descriptive name based on content analysis.
+    """
+    import re
+    from collections import Counter
+    import math
+    
+    # Common stop words to filter out
+    stop_words = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'been', 'be',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should',
+        'could', 'may', 'might', 'must', 'shall', 'can', 'need', 'ought',
+        'i', 'you', 'he', 'she', 'it', 'we', 'they', 'them', 'their', 'this',
+        'that', 'these', 'those', 'which', 'what', 'when', 'where', 'why', 'how',
+        'not', 'no', 'yes', 'all', 'some', 'any', 'each', 'every', 'either',
+        'neither', 'both', 'more', 'most', 'less', 'least', 'many', 'much',
+        'few', 'several', 'such', 'own', 'same', 'other', 'another', 'next',
+        'as', 'than', 'if', 'then', 'else', 'so', 'therefore', 'however',
+        'because', 'since', 'although', 'though', 'unless', 'until', 'while',
+        'after', 'before', 'during', 'through', 'about', 'above', 'below',
+        'between', 'into', 'out', 'up', 'down', 'over', 'under', 'again',
+        'also', 'just', 'only', 'very', 'too', 'quite', 'rather', 'really',
+        'still', 'even', 'yet', 'already', 'here', 'there', 'now', 'then',
+        'today', 'tomorrow', 'yesterday', 'always', 'never', 'sometimes',
+        'often', 'usually', 'generally', 'specifically', 'particularly',
+        'doc', 'document', 'new', 'edit', 'untitled', 'test', 'one', 'two',
+        'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'
+    }
+    
+    # Get full documents with content - they already have content in them
+    full_docs = documents[:5]  # Analyze up to 5 representative documents
+    
+    if not full_docs:
+        return generate_cluster_name(documents)  # Fallback to v1
+    
+    # Collect all words from titles and content
+    word_freq = Counter()
+    doc_word_count = defaultdict(set)  # Track which docs contain each word
+    
+    for doc in full_docs:
+        # Process title
+        title_words = re.findall(r'\b[a-zA-Z]+\b', doc['title'].lower())
+        content_words = re.findall(r'\b[a-zA-Z]+\b', doc.get('content', '').lower())[:500]  # First 500 words
+        
+        # Combine and filter
+        all_doc_words = set(title_words + content_words)
+        meaningful_words = {w for w in all_doc_words if len(w) > 3 and w not in stop_words}
+        
+        # Add to frequency counter with boost for title words
+        for word in meaningful_words:
+            if word in title_words:
+                word_freq[word] += 3  # Boost title words
+            else:
+                word_freq[word] += 1
+            doc_word_count[word].add(doc['id'])
+    
+    # Calculate scores emphasizing words that appear in more documents
+    total_docs = len(full_docs)
+    word_scores = {}
+    
+    for word, freq in word_freq.items():
+        # How many documents contain this word
+        doc_frequency = len(doc_word_count[word])
+        doc_coverage = doc_frequency / total_docs
+        
+        # Base score from frequency
+        score = freq
+        
+        # Strong bonus for words that appear in multiple documents
+        if doc_coverage >= 0.8:  # Word appears in 80%+ of docs
+            score *= 3.0  # Triple the score
+        elif doc_coverage >= 0.6:  # Word appears in 60-80% of docs
+            score *= 2.0  # Double the score
+        elif doc_coverage >= 0.4:  # Word appears in 40-60% of docs
+            score *= 1.5
+        else:  # Word appears in fewer than 40% of docs
+            score *= 0.5  # Penalize rare words
+            
+        # Additional boost for perfect coverage (appears in all docs)
+        if doc_frequency == total_docs:
+            score *= 1.2
+            
+        word_scores[word] = score
+    
+    # Get top scoring words
+    top_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    # Build cluster name from top distinctive words
+    name_parts = []
+    used_concepts = set()
+    
+    for word, score in top_words:
+        # Skip if too similar to already used words
+        if any(word[:4] == used[:4] for used in used_concepts):
+            continue
+            
+        name_parts.append(word.capitalize())
+        used_concepts.add(word)
+        
+        if len(name_parts) >= 3:
+            break
+    
+    if len(name_parts) >= 2:
+        return " ".join(name_parts)
+    elif name_parts:
+        return name_parts[0] + " Group"
+    else:
+        return generate_cluster_name(documents)  # Fallback to v1
+
+
+# Timing statistics storage
+cluster_naming_stats = {
+    'v1_times': [],
+    'v2_times': [],
+    'v1_total': 0,
+    'v2_total': 0,
+    'v1_count': 0,
+    'v2_count': 0
+}
+
+
 @app.post("/clusters", response_model=ClusterResponse)
 def get_document_clusters(request: ClusterRequest):
     """Cluster documents based on their semantic embeddings"""
@@ -383,6 +578,15 @@ def get_document_clusters(request: ClusterRequest):
         
         if len(embeddings) < 2:
             raise HTTPException(status_code=400, detail="Not enough documents with embeddings")
+        
+        # Clean embeddings to handle numerical issues
+        # Replace NaN/inf with 0
+        embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Normalize embeddings to prevent numerical overflow
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1  # Avoid division by zero
+        embeddings = embeddings / norms
         
         # Determine optimal number of clusters if not specified
         if request.num_clusters is None:
@@ -421,12 +625,7 @@ def get_document_clusters(request: ClusterRequest):
                 # Find the document info
                 doc_info = next((d for d in documents if d['id'] == doc_id), None)
                 if doc_info:
-                    cluster_docs.append({
-                        'id': doc_info['id'],
-                        'title': doc_info['title'],
-                        'doc_type': doc_info.get('doc_type'),
-                        'created_at': doc_info.get('created_at')
-                    })
+                    cluster_docs.append(doc_info)  # Keep full document info
             
             # Calculate cluster center and find nearest document as representative
             cluster_center = kmeans.cluster_centers_[i]
@@ -435,14 +634,43 @@ def get_document_clusters(request: ClusterRequest):
             representative_idx = cluster_indices[np.argmin(distances)]
             representative_id = doc_ids[representative_idx]
             
-            # Generate cluster name based on documents
-            cluster_name = generate_cluster_name(cluster_docs)
+            # Generate cluster name based on documents with timing
+            if request.naming_method == "v1":
+                start_time = time.time()
+                cluster_name = generate_cluster_name(cluster_docs)
+                elapsed = time.time() - start_time
+                cluster_naming_stats['v1_times'].append(elapsed)
+                cluster_naming_stats['v1_total'] += elapsed
+                cluster_naming_stats['v1_count'] += 1
+            elif request.naming_method == "v2":
+                start_time = time.time()
+                cluster_name = generate_cluster_name_v2(cluster_docs, document_store)
+                elapsed = time.time() - start_time
+                cluster_naming_stats['v2_times'].append(elapsed)
+                cluster_naming_stats['v2_total'] += elapsed
+                cluster_naming_stats['v2_count'] += 1
+            else:  # v3
+                start_time = time.time()
+                cluster_name = generate_cluster_name_v3(cluster_docs, document_store, representative_id)
+                elapsed = time.time() - start_time
+                # Store v3 stats in v2 slots for now (we can add v3_times later if needed)
+                cluster_naming_stats['v2_times'].append(elapsed)
+                cluster_naming_stats['v2_total'] += elapsed
+                cluster_naming_stats['v2_count'] += 1
+            
+            # Create metadata-only version for response
+            cluster_docs_metadata = [{
+                'id': doc['id'],
+                'title': doc['title'],
+                'doc_type': doc.get('doc_type'),
+                'created_at': doc.get('created_at')
+            } for doc in cluster_docs]
             
             clusters.append({
                 'cluster_id': i,
                 'cluster_name': cluster_name,
                 'size': len(cluster_docs),
-                'documents': cluster_docs,
+                'documents': cluster_docs_metadata,
                 'representative_document_id': representative_id
             })
         
@@ -454,7 +682,33 @@ def get_document_clusters(request: ClusterRequest):
         )
         
     except Exception as e:
+        import traceback
+        print(f"Clustering error: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Clustering error: {str(e)}")
+
+
+@app.get("/cluster-naming-stats")
+def get_cluster_naming_stats():
+    """Get statistics about cluster naming performance"""
+    stats = {
+        'v1': {
+            'total_time': cluster_naming_stats['v1_total'],
+            'count': cluster_naming_stats['v1_count'],
+            'average_time': cluster_naming_stats['v1_total'] / cluster_naming_stats['v1_count'] if cluster_naming_stats['v1_count'] > 0 else 0,
+            'recent_times': cluster_naming_stats['v1_times'][-10:]  # Last 10 times
+        },
+        'v2': {
+            'total_time': cluster_naming_stats['v2_total'],
+            'count': cluster_naming_stats['v2_count'],
+            'average_time': cluster_naming_stats['v2_total'] / cluster_naming_stats['v2_count'] if cluster_naming_stats['v2_count'] > 0 else 0,
+            'recent_times': cluster_naming_stats['v2_times'][-10:]  # Last 10 times
+        },
+        'comparison': {
+            'v2_vs_v1_ratio': (cluster_naming_stats['v2_total'] / cluster_naming_stats['v2_count']) / (cluster_naming_stats['v1_total'] / cluster_naming_stats['v1_count']) if cluster_naming_stats['v1_count'] > 0 and cluster_naming_stats['v2_count'] > 0 else None
+        }
+    }
+    return stats
 
 
 if __name__ == "__main__":

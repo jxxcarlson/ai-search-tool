@@ -92,12 +92,16 @@ if [ -z "$VIRTUAL_ENV" ]; then
 fi
 
 # Start the server and capture output
-python server.py $API_PORT > api_server.log 2>&1 &
+# Export environment variables to ensure they're passed to the subprocess
+export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+# Set offline mode if no internet connection
+export HF_HUB_OFFLINE=1
+python -u server.py $API_PORT 2>&1 | tee api_server.log &
 API_PID=$!
 
 # Wait for API server to start (give it more time for model loading)
 echo -e "${BLUE}Waiting for API server to initialize...${NC}"
-for i in {1..10}; do
+for i in {1..30}; do
     if lsof -i:$API_PORT > /dev/null 2>&1; then
         echo -e "${GREEN}✓ API server started successfully${NC}"
         break

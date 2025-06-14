@@ -159,6 +159,109 @@ docTypeFromString str =
             DTMarkDown
 
 
+inferDocType : String -> DocType
+inferDocType content =
+    let
+        -- Take first 500 characters to check for patterns
+        topContent =
+            String.left 500 content
+
+        -- Check for LaTeX patterns
+        hasLatexTitle =
+            String.contains "\\title{" topContent
+
+        hasLatexCommands =
+            -- Look for \command{...} pattern
+            String.contains "\\" content && 
+            (String.contains "{" content || String.contains "}" content)
+
+        -- Check for Scripta patterns  
+        hasScriptaTitle =
+            String.contains "| title " topContent
+
+        hasScriptaBrackets =
+            -- Look for [command ...] pattern
+            String.contains "[" content && String.contains "]" content &&
+            -- Make sure it's not just a markdown link
+            not (String.contains "](http" content || String.contains "](/" content)
+    in
+    if hasLatexTitle || hasLatexCommands then
+        DTLaTeX
+    else if hasScriptaTitle || hasScriptaBrackets then
+        DTScripta
+    else
+        DTMarkDown
+
+
+inferTitle : String -> DocType -> Maybe String
+inferTitle content docType =
+    case docType of
+        DTLaTeX ->
+            -- Look for \title{...}
+            case String.indexes "\\title{" content of
+                [] ->
+                    Nothing
+                    
+                index :: _ ->
+                    let
+                        afterTitle =
+                            String.dropLeft (index + 7) content
+                        
+                        -- Find the closing brace
+                        closingIndex =
+                            String.indexes "}" afterTitle
+                                |> List.head
+                                |> Maybe.withDefault 0
+                        
+                        title =
+                            String.left closingIndex afterTitle
+                                |> String.trim
+                    in
+                    if String.isEmpty title then
+                        Nothing
+                    else
+                        Just title
+        
+        DTScripta ->
+            -- Look for | title\nSTRING pattern
+            case String.indexes "| title" content of
+                [] ->
+                    Nothing
+                    
+                index :: _ ->
+                    let
+                        afterTitle =
+                            String.dropLeft (index + 7) content
+                                |> String.lines
+                                |> List.drop 1  -- Skip the "| title" line
+                                |> List.head
+                                |> Maybe.withDefault ""
+                                |> String.trim
+                    in
+                    if String.isEmpty afterTitle then
+                        Nothing
+                    else
+                        Just afterTitle
+        
+        DTMarkDown ->
+            -- Look for first # STRING
+            content
+                |> String.lines
+                |> List.filter (String.startsWith "# ")
+                |> List.head
+                |> Maybe.map (String.dropLeft 2 >> String.trim)
+                |> Maybe.andThen (\title -> 
+                    if String.isEmpty title then 
+                        Nothing 
+                    else 
+                        Just title
+                )
+        
+        DTClaudeResponse ->
+            -- Claude responses might have markdown titles
+            inferTitle content DTMarkDown
+
+
 type alias Flags =
     { apiUrl : String
     }
@@ -282,8 +385,20 @@ update msg model =
             let
                 newDoc =
                     model.newDocument
+                
+                -- Auto-detect document type from content
+                detectedType =
+                    inferDocType value
+                
+                -- Auto-infer title if current title is empty
+                newTitle =
+                    if String.isEmpty newDoc.title then
+                        inferTitle value detectedType
+                            |> Maybe.withDefault newDoc.title
+                    else
+                        newDoc.title
             in
-            ( { model | newDocument = { newDoc | content = value } }, Cmd.none )
+            ( { model | newDocument = { newDoc | content = value, docType = detectedType, title = newTitle } }, Cmd.none )
 
         UpdateNewDocType value ->
             let
@@ -298,19 +413,13 @@ update msg model =
         AddDocument ->
             let
                 docType =
-                    docTypeFromString "md" |> Just
-
-                --if String.isEmpty model.newDocument.docType then
-                --    Nothing
-                --
-                --else
-                --    Just model.newDocument.docType
+                    Just (docTypeToString model.newDocument.docType)
             in
             ( { model | loading = True }
             , Api.addDocument model.config
                 model.newDocument.title
                 model.newDocument.content
-                (Just "scr")
+                docType
                 DocumentAdded
             )
 
@@ -388,7 +497,23 @@ update msg model =
         UpdateEditingContent content ->
             case model.editingDocument of
                 Just editing ->
-                    ( { model | editingDocument = Just { editing | content = content } }, Cmd.none )
+                    let
+                        -- Auto-detect document type from content
+                        detectedDocType =
+                            inferDocType content
+                            
+                        detectedTypeString =
+                            docTypeToString detectedDocType
+                        
+                        -- Auto-infer title if current title is empty
+                        newTitle =
+                            if String.isEmpty editing.title then
+                                inferTitle content detectedDocType
+                                    |> Maybe.withDefault editing.title
+                            else
+                                editing.title
+                    in
+                    ( { model | editingDocument = Just { editing | content = content, docType = Just detectedTypeString, title = newTitle } }, Cmd.none )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -811,6 +936,7 @@ viewReadOnlyDocument model doc =
             Just "scr" ->
                 div
                     [ class "document-content"
+                    , class "scr"
                     , Html.Attributes.style "width" (String.fromInt (docWidth - 80) ++ "px")
                     , Html.Attributes.style "font-size" (String.fromInt 12 ++ "px")
                     ]
@@ -821,6 +947,7 @@ viewReadOnlyDocument model doc =
             Just "ltx" ->
                 div
                     [ class "document-content"
+                    , class "ltx"
                     , Html.Attributes.style "width" (String.fromInt docWidth ++ "px")
                     , Html.Attributes.style "font-size" (String.fromInt 12 ++ "px")
                     ]

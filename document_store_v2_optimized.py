@@ -38,7 +38,12 @@ class DocumentStoreV2Optimized:
     def _load_model(self):
         """Lazy load the sentence transformer model"""
         if self.model is None:
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+            # Try to load with local_files_only first to avoid network issues
+            try:
+                self.model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+            except:
+                # If that fails, try normal loading (will download if needed)
+                self.model = SentenceTransformer('all-MiniLM-L6-v2')
     
     def add_document(self, title: str, content: str, doc_type: Optional[str] = None) -> str:
         """Add a new document to the store"""
