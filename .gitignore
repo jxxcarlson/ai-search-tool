@@ -101,4 +101,8 @@ MANIFEST
 
 # Installer logs
 pip-log.txt
-pip-delete-this-directory.txtelm-app/main.js
+pip-delete-this-directory.txt
+elm-app/main.js
+elm-app/elm-stuff/0.19.1/*.elmi
+elm-app/elm-stuff/0.19.1/*.elmo
+elm-app/elm-stuff/0.19.1/*.dat

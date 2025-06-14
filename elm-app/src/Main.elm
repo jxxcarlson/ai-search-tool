@@ -767,6 +767,17 @@ viewReadOnlyDocument model doc =
     let
         -- Calculate document width based on window width with some padding
         -- Accounting for margins, padding, and other UI elements
+        _ =
+            Debug.log "viewReadOnlyDocument" ( doc.title, doc.docType )
+
+        _ =
+            case doc.docType of
+                Just dt ->
+                    Debug.log "docType is Just" dt
+
+                Nothing ->
+                    Debug.log "docType is Nothing" "nothing"
+
         docWidth =
             Basics.max 300 (model.windowWidth - 200)
 
@@ -810,7 +821,7 @@ viewReadOnlyDocument model doc =
             Just "ltx" ->
                 div
                     [ class "document-content"
-                    , Html.Attributes.style "width" (String.fromInt (docWidth - 80) ++ "px")
+                    , Html.Attributes.style "width" (String.fromInt docWidth ++ "px")
                     , Html.Attributes.style "font-size" (String.fromInt 12 ++ "px")
                     ]
                     (ScriptaV2.APISimple.compile { params | lang = ScriptaV2.Language.MicroLaTeXLang } doc.content
