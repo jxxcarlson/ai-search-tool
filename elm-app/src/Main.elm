@@ -142,6 +142,7 @@ type Msg
     | PDFUploaded (Result Http.Error Document)
     | UploadPDF
     | OpenPDFNative String
+    | KeyPressed String
 
 
 type DocType
@@ -756,6 +757,41 @@ update msg model =
             ( model
             , Api.openPDFNative model.config filename NoOp
             )
+        
+        KeyPressed key ->
+            case key of
+                "n" ->
+                    -- Ctrl+N: Add Document
+                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown } }
+                    , Cmd.none
+                    )
+                
+                "c" ->
+                    -- Ctrl+C: Ask Claude
+                    ( { model | view = ClaudeView }
+                    , Cmd.none
+                    )
+                
+                "l" ->
+                    -- Ctrl+L: Documents
+                    ( { model | view = ListView, loading = True }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+                
+                "g" ->
+                    -- Ctrl+G: Clusters
+                    ( { model | view = ClustersView, clusterLoading = True }
+                    , Api.getClusters model.config Nothing GotClusters
+                    )
+                
+                "r" ->
+                    -- Ctrl+R: Random
+                    ( { model | view = RandomView }
+                    , Task.perform GotCurrentTime Time.now
+                    )
+                
+                _ ->
+                    ( model, Cmd.none )
 
 
 httpErrorToString : Http.Error -> String
@@ -814,11 +850,26 @@ viewHeader model =
     header [ class "app-header" ]
         [ h1 [] [ text "AI Search Tool" ]
         , nav []
-            [ button [ onClick (ChangeView ListView), class "nav-button" ] [ text "Documents" ]
-            , button [ onClick (ChangeView AddDocumentView), class "nav-button" ] [ text "Add Document" ]
-            , button [ onClick (ChangeView ClaudeView), class "nav-button" ] [ text "Ask Claude" ]
-            , button [ onClick LoadRandomDocuments, class "nav-button" ] [ text "Random" ]
-            , button [ onClick LoadClusters, class "nav-button" ] [ text "Clusters" ]
+            [ button [ onClick (ChangeView ListView), class "nav-button", title "Ctrl+L" ] 
+                [ text "Documents"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+L)" ]
+                ]
+            , button [ onClick (ChangeView AddDocumentView), class "nav-button", title "Ctrl+N" ] 
+                [ text "Add Document"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+N)" ]
+                ]
+            , button [ onClick (ChangeView ClaudeView), class "nav-button", title "Ctrl+C" ] 
+                [ text "Ask Claude"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+C)" ]
+                ]
+            , button [ onClick LoadRandomDocuments, class "nav-button", title "Ctrl+R" ] 
+                [ text "Random"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+R)" ]
+                ]
+            , button [ onClick LoadClusters, class "nav-button", title "Ctrl+G" ] 
+                [ text "Clusters"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+G)" ]
+                ]
             , button [ onClick LoadStats, class "nav-button" ] [ text "Stats" ]
             ]
         , div [ class "search-bar" ]
@@ -1777,7 +1828,42 @@ shuffleAndTake n list =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Browser.Events.onResize WindowResized
+    Sub.batch
+        [ Browser.Events.onResize WindowResized
+        , Browser.Events.onKeyDown keyDecoder
+        ]
+
+
+keyDecoder : Decode.Decoder Msg
+keyDecoder =
+    Decode.map2 toKeyMsg
+        (Decode.field "key" Decode.string)
+        (Decode.field "ctrlKey" Decode.bool)
+
+
+toKeyMsg : String -> Bool -> Msg
+toKeyMsg key ctrlPressed =
+    if ctrlPressed then
+        case String.toLower key of
+            "n" ->
+                KeyPressed "n"
+            
+            "c" ->
+                KeyPressed "c"
+            
+            "l" ->
+                KeyPressed "l"
+            
+            "g" ->
+                KeyPressed "g"
+            
+            "r" ->
+                KeyPressed "r"
+            
+            _ ->
+                NoOp
+    else
+        NoOp
 
 
 main : Program Flags Model Msg

@@ -54,6 +54,12 @@
     color: var(--primary-color);
 }
 
+.shortcut-hint {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-left: 0.25rem;
+}
+
 .search-bar {
     display: flex;
     gap: 0.5rem;
