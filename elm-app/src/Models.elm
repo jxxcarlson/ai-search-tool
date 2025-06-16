@@ -4,6 +4,11 @@ import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 
 
+-- Helper for pipeline decoding
+andMap : Decoder a -> Decoder (a -> b) -> Decoder b
+andMap = Decode.map2 (|>)
+
+
 type alias Document =
     { id : String
     , title : String
@@ -12,6 +17,8 @@ type alias Document =
     , docType : Maybe String
     , tags : Maybe String
     , index : Maybe Int
+    , clusterId : Maybe Int
+    , clusterName : Maybe String
     }
 
 
@@ -24,6 +31,8 @@ type alias SearchResult =
     , tags : Maybe String
     , index : Maybe Int
     , similarityScore : Maybe Float
+    , clusterId : Maybe Int
+    , clusterName : Maybe String
     }
 
 
@@ -71,27 +80,31 @@ type alias ClusterResponse =
 
 documentDecoder : Decoder Document
 documentDecoder =
-    Decode.map7 Document
-        (Decode.field "id" Decode.string)
-        (Decode.field "title" Decode.string)
-        (Decode.field "content" Decode.string)
-        (Decode.maybe (Decode.field "created_at" Decode.string))
-        (Decode.maybe (Decode.field "doc_type" Decode.string))
-        (Decode.maybe (Decode.field "tags" Decode.string))
-        (Decode.maybe (Decode.field "index" Decode.int))
+    Decode.succeed Document
+        |> andMap (Decode.field "id" Decode.string)
+        |> andMap (Decode.field "title" Decode.string)
+        |> andMap (Decode.field "content" Decode.string)
+        |> andMap (Decode.maybe (Decode.field "created_at" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "doc_type" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "tags" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "index" Decode.int))
+        |> andMap (Decode.maybe (Decode.field "cluster_id" Decode.int))
+        |> andMap (Decode.maybe (Decode.field "cluster_name" Decode.string))
 
 
 searchResultDecoder : Decoder SearchResult
 searchResultDecoder =
-    Decode.map8 SearchResult
-        (Decode.field "id" Decode.string)
-        (Decode.field "title" Decode.string)
-        (Decode.field "content" Decode.string)
-        (Decode.maybe (Decode.field "created_at" Decode.string))
-        (Decode.maybe (Decode.field "doc_type" Decode.string))
-        (Decode.maybe (Decode.field "tags" Decode.string))
-        (Decode.maybe (Decode.field "index" Decode.int))
-        (Decode.maybe (Decode.field "similarity_score" Decode.float))
+    Decode.succeed SearchResult
+        |> andMap (Decode.field "id" Decode.string)
+        |> andMap (Decode.field "title" Decode.string)
+        |> andMap (Decode.field "content" Decode.string)
+        |> andMap (Decode.maybe (Decode.field "created_at" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "doc_type" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "tags" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "index" Decode.int))
+        |> andMap (Decode.maybe (Decode.field "similarity_score" Decode.float))
+        |> andMap (Decode.maybe (Decode.field "cluster_id" Decode.int))
+        |> andMap (Decode.maybe (Decode.field "cluster_name" Decode.string))
 
 
 statsDecoder : Decoder Stats

@@ -905,3 +905,26 @@
     color: var(--primary-color);
     text-decoration: underline;
 }
+
+/* Cluster info in document cards */
+.cluster-info {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.cluster-label {
+    margin-right: 0.25rem;
+}
+
+.cluster-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.cluster-link:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}

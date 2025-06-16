@@ -9,7 +9,7 @@ import File exposing (File)
 import File.Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (..)
+import Html.Events exposing (onClick, onInput, on, stopPropagationOn)
 import Http
 import Json.Decode as Decode
 import Markdown.Html
@@ -149,6 +149,7 @@ type Msg
     | OpenPDFNative String
     | KeyPressed String
     | ToggleClusterExpansion Int
+    | NavigateToCluster Int
 
 
 type DocType
@@ -828,6 +829,15 @@ update msg model =
                         clusterId :: model.expandedClusters
             in
             ( { model | expandedClusters = newExpandedClusters }, Cmd.none )
+        
+        NavigateToCluster clusterId ->
+            ( { model 
+                | view = ClustersView
+                , clusterLoading = True
+                , expandedClusters = [clusterId]  -- Expand only the selected cluster
+              }
+            , Api.getClusters model.config Nothing GotClusters
+            )
 
 
 httpErrorToString : Http.Error -> String
@@ -965,6 +975,26 @@ viewDocumentCard doc =
                 Nothing ->
                     text ""
             ]
+        , case doc.clusterName of
+            Just clusterName ->
+                case doc.clusterId of
+                    Just clusterId ->
+                        div [ class "cluster-info" ]
+                            [ span [ class "cluster-label" ] [ text "Cluster: " ]
+                            , a 
+                                [ href "#"
+                                , onClick (NavigateToCluster clusterId)
+                                , class "cluster-link"
+                                , stopPropagationOn "click" (Decode.succeed (NavigateToCluster clusterId, True))
+                                ]
+                                [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
+                            ]
+                    
+                    Nothing ->
+                        text ""
+            
+            Nothing ->
+                text ""
         , case doc.tags of
             Just tags ->
                 if String.isEmpty tags then
@@ -1002,7 +1032,7 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, index = result.index }) ]
+    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
             [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
@@ -1013,6 +1043,26 @@ viewSearchResult result =
                 Nothing ->
                     text ""
             ]
+        , case result.clusterName of
+            Just clusterName ->
+                case result.clusterId of
+                    Just clusterId ->
+                        div [ class "cluster-info" ]
+                            [ span [ class "cluster-label" ] [ text "Cluster: " ]
+                            , a 
+                                [ href "#"
+                                , onClick (NavigateToCluster clusterId)
+                                , class "cluster-link"
+                                , stopPropagationOn "click" (Decode.succeed (NavigateToCluster clusterId, True))
+                                ]
+                                [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
+                            ]
+                    
+                    Nothing ->
+                        text ""
+            
+            Nothing ->
+                text ""
         , case result.similarityScore of
             Just score ->
                 div [ class "similarity" ] [ text (formatPercent score ++ " match") ]
@@ -1194,6 +1244,25 @@ viewReadOnlyDocument model doc =
                 Nothing ->
                     text ""
             ]
+        , case doc.clusterName of
+            Just clusterName ->
+                case doc.clusterId of
+                    Just clusterId ->
+                        div [ class "cluster-info" ]
+                            [ span [ class "cluster-label" ] [ text "Cluster: " ]
+                            , a 
+                                [ href "#"
+                                , onClick (NavigateToCluster clusterId)
+                                , class "cluster-link"
+                                ]
+                                [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
+                            ]
+                    
+                    Nothing ->
+                        text ""
+            
+            Nothing ->
+                text ""
         , case doc.tags of
             Just tags ->
                 if String.isEmpty tags then

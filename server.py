@@ -81,6 +81,8 @@ class DocumentResponse(BaseModel):
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
     index: Optional[int] = None
+    cluster_id: Optional[int] = None
+    cluster_name: Optional[str] = None
 
 
 app = FastAPI(title="Document Search API")
@@ -108,6 +110,13 @@ if api_key:
 else:
     print("Warning: ANTHROPIC_API_KEY not found. Claude features will be disabled.")
 
+# Cluster cache
+cluster_cache = {
+    'clusters': None,
+    'last_updated': None,
+    'document_count': 0
+}
+
 
 @app.get("/")
 def read_root():
@@ -118,6 +127,8 @@ def read_root():
 def add_document(doc: DocumentRequest):
     """Add a new document to the store"""
     doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type, tags=doc.tags)
+    # Invalidate cluster cache when document is added
+    invalidate_cluster_cache()
     # Fetch the created document
     documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
     if documents:
@@ -139,14 +150,62 @@ def import_documents(documents: List[DocumentRequest]):
 def search_documents(search: SearchRequest):
     """Search for documents using semantic similarity"""
     results = document_store.search(search.query, k=search.limit)
-    return [DocumentResponse(**doc) for doc in results]
+    
+    # Get clusters if available
+    clusters_response = get_cached_clusters()
+    
+    # Create a mapping of document ID to cluster info
+    doc_to_cluster = {}
+    if clusters_response:
+        for cluster in clusters_response.clusters:
+            for doc in cluster['documents']:
+                doc_to_cluster[doc['id']] = {
+                    'cluster_id': cluster['cluster_id'],
+                    'cluster_name': cluster['cluster_name']
+                }
+    else:
+        print(f"No clusters available for {len(results)} search results")
+    
+    # Add cluster info to each search result
+    response_docs = []
+    for doc in results:
+        doc_dict = dict(doc)
+        if doc['id'] in doc_to_cluster:
+            doc_dict['cluster_id'] = doc_to_cluster[doc['id']]['cluster_id']
+            doc_dict['cluster_name'] = doc_to_cluster[doc['id']]['cluster_name']
+        response_docs.append(DocumentResponse(**doc_dict))
+    
+    return response_docs
 
 
 @app.get("/documents", response_model=List[DocumentResponse])
 def list_documents():
     """List all documents in the store"""
     documents = document_store.get_all_documents()
-    return [DocumentResponse(**doc) for doc in documents]
+    
+    # Get clusters if available
+    clusters_response = get_cached_clusters()
+    
+    # Create a mapping of document ID to cluster info
+    doc_to_cluster = {}
+    if clusters_response:
+        for cluster in clusters_response.clusters:
+            for doc in cluster['documents']:
+                doc_to_cluster[doc['id']] = {
+                    'cluster_id': cluster['cluster_id'],
+                    'cluster_name': cluster['cluster_name']
+                }
+    
+    # Add cluster info to each document
+    response_docs = []
+    for doc in documents:
+        doc_dict = dict(doc)
+        if doc['id'] in doc_to_cluster:
+            doc_dict['cluster_id'] = doc_to_cluster[doc['id']]['cluster_id']
+            doc_dict['cluster_name'] = doc_to_cluster[doc['id']]['cluster_name']
+        response_docs.append(DocumentResponse(**doc_dict))
+    
+    return response_docs
 
 
 @app.get("/documents/by-index/{index}", response_model=DocumentResponse)
@@ -162,6 +221,8 @@ def get_document_by_index(index: int):
 def delete_document(doc_id: str):
     """Delete a document by ID"""
     if document_store.delete_document(doc_id):
+        # Invalidate cluster cache when document is deleted
+        invalidate_cluster_cache()
         return {"message": f"Document {doc_id} deleted successfully"}
     raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
 
@@ -177,6 +238,8 @@ def clear_all_documents():
     """Clear all documents and embeddings from the store"""
     try:
         count = document_store.clear_all()
+        # Invalidate cluster cache when all documents are cleared
+        invalidate_cluster_cache()
         return {"message": f"Successfully cleared {count} documents from the store"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -194,6 +257,8 @@ def rename_document(doc_id: str, request: RenameRequest):
 def update_document(doc_id: str, request: UpdateRequest):
     """Update a document's content and metadata"""
     if document_store.update_document(doc_id, request.title, request.content, request.doc_type, request.tags):
+        # Invalidate cluster cache when document is updated
+        invalidate_cluster_cache()
         # Get the updated document
         documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
         if documents:
@@ -600,8 +665,8 @@ def generate_cluster_name_v5(documents, doc_store, representative_id):
         # Find tags that appear in all or most documents
         common_tags = []
         for tag, count in tag_counter.most_common():
-            # If a tag appears in at least 80% of documents, consider it common
-            if count >= total_docs * 0.8:
+            # If a tag appears in at least 50% of documents, consider it common
+            if count >= total_docs * 0.5:
                 common_tags.append(tag)
         
         if common_tags:
@@ -822,146 +887,191 @@ cluster_naming_stats = {
 }
 
 
-@app.post("/clusters", response_model=ClusterResponse)
-def get_document_clusters(request: ClusterRequest):
-    """Cluster documents based on their semantic embeddings"""
+def get_cached_clusters():
+    """Get clusters from cache or compute them if cache is invalid"""
+    current_doc_count = len(document_store.get_all_documents())
+    
+    # Don't try to cluster if we have fewer than 2 documents
+    if current_doc_count < 2:
+        return None
+    
+    # Check if cache is valid
+    if (cluster_cache['clusters'] is not None and 
+        cluster_cache['document_count'] == current_doc_count and
+        cluster_cache['last_updated'] is not None and
+        (datetime.now() - cluster_cache['last_updated']).seconds < 3600):  # 1 hour cache
+        return cluster_cache['clusters']
+    
+    # Compute clusters
+    try:
+        # Use default clustering parameters
+        request = ClusterRequest()
+        clusters_response = compute_clusters(request)
+        
+        # Update cache
+        cluster_cache['clusters'] = clusters_response
+        cluster_cache['last_updated'] = datetime.now()
+        cluster_cache['document_count'] = current_doc_count
+        
+        return clusters_response
+    except Exception as e:
+        print(f"Error computing clusters for cache: {e}")
+        return None
+
+
+def invalidate_cluster_cache():
+    """Invalidate the cluster cache"""
+    cluster_cache['clusters'] = None
+    cluster_cache['last_updated'] = None
+    cluster_cache['document_count'] = 0
+
+
+def compute_clusters(request: ClusterRequest) -> ClusterResponse:
+    """Extract clustering logic into a reusable function"""
     # Get all documents with their embeddings
     documents = document_store.get_all_documents()
     
     if len(documents) < 2:
-        raise HTTPException(status_code=400, detail="Need at least 2 documents to perform clustering")
+        raise ValueError("Need at least 2 documents to perform clustering")
     
     # Get embeddings from ChromaDB
+    # Get the collection from ChromaDB
+    collection = document_store.collection
+    
+    # Get all embeddings
+    all_data = collection.get(include=['embeddings', 'metadatas', 'documents'])
+    embeddings = np.array(all_data['embeddings'])
+    doc_ids = all_data['ids']
+    
+    if len(embeddings) < 2:
+        raise ValueError("Not enough documents with embeddings")
+    
+    # Clean embeddings to handle numerical issues
+    # Replace NaN/inf with 0
+    embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Normalize embeddings to prevent numerical overflow
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms[norms == 0] = 1  # Avoid division by zero
+    embeddings = embeddings / norms
+    
+    # Determine optimal number of clusters if not specified
+    if request.num_clusters is None:
+        best_score = -1
+        best_k = 2
+        
+        # Try different numbers of clusters
+        for k in range(request.min_clusters, min(request.max_clusters + 1, len(embeddings))):
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(embeddings)
+            
+            # Calculate silhouette score
+            if k < len(embeddings):
+                score = silhouette_score(embeddings, labels)
+                if score > best_score:
+                    best_score = score
+                    best_k = k
+        
+        num_clusters = best_k
+    else:
+        num_clusters = min(request.num_clusters, len(embeddings) - 1)
+    
+    # Perform final clustering
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(embeddings)
+    final_score = silhouette_score(embeddings, labels)
+    
+    # Organize documents by cluster
+    clusters = []
+    for i in range(num_clusters):
+        cluster_docs = []
+        cluster_indices = np.where(labels == i)[0]
+        
+        for idx in cluster_indices:
+            doc_id = doc_ids[idx]
+            # Find the document info
+            doc_info = next((d for d in documents if d['id'] == doc_id), None)
+            if doc_info:
+                cluster_docs.append(doc_info)  # Keep full document info
+        
+        # Calculate cluster center and find nearest document as representative
+        cluster_center = kmeans.cluster_centers_[i]
+        cluster_embeddings = embeddings[cluster_indices]
+        distances = np.linalg.norm(cluster_embeddings - cluster_center, axis=1)
+        representative_idx = cluster_indices[np.argmin(distances)]
+        representative_id = doc_ids[representative_idx]
+        
+        # Generate cluster name based on documents with timing
+        if request.naming_method == "v1":
+            start_time = time.time()
+            cluster_name = generate_cluster_name(cluster_docs)
+            elapsed = time.time() - start_time
+            cluster_naming_stats['v1_times'].append(elapsed)
+            cluster_naming_stats['v1_total'] += elapsed
+            cluster_naming_stats['v1_count'] += 1
+        elif request.naming_method == "v2":
+            start_time = time.time()
+            cluster_name = generate_cluster_name_v2(cluster_docs, document_store)
+            elapsed = time.time() - start_time
+            cluster_naming_stats['v2_times'].append(elapsed)
+            cluster_naming_stats['v2_total'] += elapsed
+            cluster_naming_stats['v2_count'] += 1
+        elif request.naming_method == "v3":
+            start_time = time.time()
+            cluster_name = generate_cluster_name_v3(cluster_docs, document_store, representative_id)
+            elapsed = time.time() - start_time
+            # Store v3 stats in v2 slots for now (we can add v3_times later if needed)
+            cluster_naming_stats['v2_times'].append(elapsed)
+            cluster_naming_stats['v2_total'] += elapsed
+            cluster_naming_stats['v2_count'] += 1
+        elif request.naming_method == "v4":
+            start_time = time.time()
+            cluster_name = generate_cluster_name_v4(cluster_docs, document_store, representative_id)
+            elapsed = time.time() - start_time
+            # Store v4 stats in v2 slots for now
+            cluster_naming_stats['v2_times'].append(elapsed)
+            cluster_naming_stats['v2_total'] += elapsed
+            cluster_naming_stats['v2_count'] += 1
+        else:  # v5 (default)
+            start_time = time.time()
+            cluster_name = generate_cluster_name_v5(cluster_docs, document_store, representative_id)
+            elapsed = time.time() - start_time
+            # Store v5 stats in v2 slots for now
+            cluster_naming_stats['v2_times'].append(elapsed)
+            cluster_naming_stats['v2_total'] += elapsed
+            cluster_naming_stats['v2_count'] += 1
+        
+        # Create metadata-only version for response
+        cluster_docs_metadata = [{
+            'id': doc['id'],
+            'title': doc['title'],
+            'doc_type': doc.get('doc_type'),
+            'created_at': doc.get('created_at')
+        } for doc in cluster_docs]
+        
+        clusters.append({
+            'cluster_id': i,
+            'cluster_name': cluster_name,
+            'size': len(cluster_docs),
+            'documents': cluster_docs_metadata,
+            'representative_document_id': representative_id
+        })
+    
+    return ClusterResponse(
+        clusters=clusters,
+        num_clusters=num_clusters,
+        silhouette_score=float(final_score),
+        total_documents=len(documents)
+    )
+
+
+@app.post("/clusters", response_model=ClusterResponse)
+def get_document_clusters(request: ClusterRequest):
+    """Cluster documents based on their semantic embeddings"""
     try:
-        # Get the collection from ChromaDB
-        collection = document_store.collection
-        
-        # Get all embeddings
-        all_data = collection.get(include=['embeddings', 'metadatas', 'documents'])
-        embeddings = np.array(all_data['embeddings'])
-        doc_ids = all_data['ids']
-        
-        if len(embeddings) < 2:
-            raise HTTPException(status_code=400, detail="Not enough documents with embeddings")
-        
-        # Clean embeddings to handle numerical issues
-        # Replace NaN/inf with 0
-        embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=0.0, neginf=0.0)
-        
-        # Normalize embeddings to prevent numerical overflow
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        norms[norms == 0] = 1  # Avoid division by zero
-        embeddings = embeddings / norms
-        
-        # Determine optimal number of clusters if not specified
-        if request.num_clusters is None:
-            best_score = -1
-            best_k = 2
-            
-            # Try different numbers of clusters
-            for k in range(request.min_clusters, min(request.max_clusters + 1, len(embeddings))):
-                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-                labels = kmeans.fit_predict(embeddings)
-                
-                # Calculate silhouette score
-                if k < len(embeddings):
-                    score = silhouette_score(embeddings, labels)
-                    if score > best_score:
-                        best_score = score
-                        best_k = k
-            
-            num_clusters = best_k
-        else:
-            num_clusters = min(request.num_clusters, len(embeddings) - 1)
-        
-        # Perform final clustering
-        kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(embeddings)
-        final_score = silhouette_score(embeddings, labels)
-        
-        # Organize documents by cluster
-        clusters = []
-        for i in range(num_clusters):
-            cluster_docs = []
-            cluster_indices = np.where(labels == i)[0]
-            
-            for idx in cluster_indices:
-                doc_id = doc_ids[idx]
-                # Find the document info
-                doc_info = next((d for d in documents if d['id'] == doc_id), None)
-                if doc_info:
-                    cluster_docs.append(doc_info)  # Keep full document info
-            
-            # Calculate cluster center and find nearest document as representative
-            cluster_center = kmeans.cluster_centers_[i]
-            cluster_embeddings = embeddings[cluster_indices]
-            distances = np.linalg.norm(cluster_embeddings - cluster_center, axis=1)
-            representative_idx = cluster_indices[np.argmin(distances)]
-            representative_id = doc_ids[representative_idx]
-            
-            # Generate cluster name based on documents with timing
-            if request.naming_method == "v1":
-                start_time = time.time()
-                cluster_name = generate_cluster_name(cluster_docs)
-                elapsed = time.time() - start_time
-                cluster_naming_stats['v1_times'].append(elapsed)
-                cluster_naming_stats['v1_total'] += elapsed
-                cluster_naming_stats['v1_count'] += 1
-            elif request.naming_method == "v2":
-                start_time = time.time()
-                cluster_name = generate_cluster_name_v2(cluster_docs, document_store)
-                elapsed = time.time() - start_time
-                cluster_naming_stats['v2_times'].append(elapsed)
-                cluster_naming_stats['v2_total'] += elapsed
-                cluster_naming_stats['v2_count'] += 1
-            elif request.naming_method == "v3":
-                start_time = time.time()
-                cluster_name = generate_cluster_name_v3(cluster_docs, document_store, representative_id)
-                elapsed = time.time() - start_time
-                # Store v3 stats in v2 slots for now (we can add v3_times later if needed)
-                cluster_naming_stats['v2_times'].append(elapsed)
-                cluster_naming_stats['v2_total'] += elapsed
-                cluster_naming_stats['v2_count'] += 1
-            elif request.naming_method == "v4":
-                start_time = time.time()
-                cluster_name = generate_cluster_name_v4(cluster_docs, document_store, representative_id)
-                elapsed = time.time() - start_time
-                # Store v4 stats in v2 slots for now
-                cluster_naming_stats['v2_times'].append(elapsed)
-                cluster_naming_stats['v2_total'] += elapsed
-                cluster_naming_stats['v2_count'] += 1
-            else:  # v5 (default)
-                start_time = time.time()
-                cluster_name = generate_cluster_name_v5(cluster_docs, document_store, representative_id)
-                elapsed = time.time() - start_time
-                # Store v5 stats in v2 slots for now
-                cluster_naming_stats['v2_times'].append(elapsed)
-                cluster_naming_stats['v2_total'] += elapsed
-                cluster_naming_stats['v2_count'] += 1
-            
-            # Create metadata-only version for response
-            cluster_docs_metadata = [{
-                'id': doc['id'],
-                'title': doc['title'],
-                'doc_type': doc.get('doc_type'),
-                'created_at': doc.get('created_at')
-            } for doc in cluster_docs]
-            
-            clusters.append({
-                'cluster_id': i,
-                'cluster_name': cluster_name,
-                'size': len(cluster_docs),
-                'documents': cluster_docs_metadata,
-                'representative_document_id': representative_id
-            })
-        
-        return ClusterResponse(
-            clusters=clusters,
-            num_clusters=num_clusters,
-            silhouette_score=float(final_score),
-            total_documents=len(documents)
-        )
-        
+        return compute_clusters(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         print(f"Clustering error: {str(e)}")
