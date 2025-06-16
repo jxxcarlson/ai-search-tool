@@ -10,6 +10,7 @@ type alias Document =
     , content : String
     , createdAt : Maybe String
     , docType : Maybe String
+    , tags : Maybe String
     , index : Maybe Int
     }
 
@@ -20,6 +21,7 @@ type alias SearchResult =
     , content : String
     , createdAt : Maybe String
     , docType : Maybe String
+    , tags : Maybe String
     , index : Maybe Int
     , similarityScore : Maybe Float
     }
@@ -31,6 +33,7 @@ type alias Stats =
     , model : String
     , storageLocation : String
     , chromaCollectionCount : Int
+    , databaseSizeKb : Float
     }
 
 
@@ -68,35 +71,38 @@ type alias ClusterResponse =
 
 documentDecoder : Decoder Document
 documentDecoder =
-    Decode.map6 Document
+    Decode.map7 Document
         (Decode.field "id" Decode.string)
         (Decode.field "title" Decode.string)
         (Decode.field "content" Decode.string)
         (Decode.maybe (Decode.field "created_at" Decode.string))
         (Decode.maybe (Decode.field "doc_type" Decode.string))
+        (Decode.maybe (Decode.field "tags" Decode.string))
         (Decode.maybe (Decode.field "index" Decode.int))
 
 
 searchResultDecoder : Decoder SearchResult
 searchResultDecoder =
-    Decode.map7 SearchResult
+    Decode.map8 SearchResult
         (Decode.field "id" Decode.string)
         (Decode.field "title" Decode.string)
         (Decode.field "content" Decode.string)
         (Decode.maybe (Decode.field "created_at" Decode.string))
         (Decode.maybe (Decode.field "doc_type" Decode.string))
+        (Decode.maybe (Decode.field "tags" Decode.string))
         (Decode.maybe (Decode.field "index" Decode.int))
         (Decode.maybe (Decode.field "similarity_score" Decode.float))
 
 
 statsDecoder : Decoder Stats
 statsDecoder =
-    Decode.map5 Stats
+    Decode.map6 Stats
         (Decode.field "total_documents" Decode.int)
         (Decode.field "embedding_dimension" Decode.int)
         (Decode.field "model" Decode.string)
         (Decode.field "storage_location" Decode.string)
         (Decode.field "chroma_collection_count" Decode.int)
+        (Decode.field "database_size_kb" Decode.float)
 
 
 apiErrorDecoder : Decoder ApiError
@@ -107,12 +113,13 @@ apiErrorDecoder =
 
 
 
-encodeDocument : String -> String -> Maybe String -> Encode.Value
-encodeDocument title content docType =
+encodeDocument : String -> String -> Maybe String -> String -> Encode.Value
+encodeDocument title content docType tags =
     Encode.object
         [ ( "title", Encode.string title )
         , ( "content", Encode.string content )
         , ( "doc_type", encodeMaybe Encode.string docType )
+        , ( "tags", if String.isEmpty tags then Encode.null else Encode.string tags )
         ]
 
 
@@ -141,14 +148,15 @@ encodeMaybe encoder maybeVal =
             Encode.null
 
 
-encodeUpdate : Maybe String -> Maybe String -> Maybe String -> Encode.Value
-encodeUpdate title content docType =
+encodeUpdate : Maybe String -> Maybe String -> Maybe String -> Maybe String -> Encode.Value
+encodeUpdate title content docType tags =
     let
         fields =
             List.filterMap identity
                 [ Maybe.map (\t -> ( "title", Encode.string t )) title
                 , Maybe.map (\c -> ( "content", Encode.string c )) content
                 , Maybe.map (\d -> ( "doc_type", Encode.string d )) docType
+                , Maybe.map (\t -> ( "tags", Encode.string t )) tags
                 ]
     in
     Encode.object fields

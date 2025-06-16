@@ -536,6 +536,46 @@
     font-weight: 500;
 }
 
+.editing-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.editing-mode-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.inline-tags-editor {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inline-tags-editor label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.inline-tags-input {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    width: 300px;
+}
+
+.inline-tags-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
 .claude-view {
     padding: 2rem;
 }
@@ -646,6 +686,7 @@
     margin-bottom: 1rem;
 }
 
+/* Old cluster-documents styles - commented out for new collapsible design
 .cluster-documents {
     margin-top: 1rem;
 }
@@ -659,6 +700,7 @@
     margin: 0.25rem 0;
     font-size: 0.875rem;
 }
+*/
 
 .doc-type-badge {
     color: var(--text-secondary);
@@ -810,4 +852,55 @@
     .clusters-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* Simple Cluster List Styles */
+.clusters-list {
+    margin-top: 1.5rem;
+}
+
+.cluster-list-item {
+    margin-bottom: 0.5rem;
+}
+
+.cluster-name-line {
+    padding: 0.5rem 0;
+    color: #1e3a8a; /* dark blue */
+    font-size: 1rem;
+    transition: color 0.2s;
+}
+
+.cluster-name-line:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+.cluster-expanded-content {
+    margin-left: 2rem;
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--border-color);
+}
+
+.cluster-doc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.cluster-document-item {
+    padding: 0.25rem 0;
+}
+
+.cluster-document-item a {
+    text-decoration: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition: color 0.2s;
+}
+
+.cluster-document-item a:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
 }

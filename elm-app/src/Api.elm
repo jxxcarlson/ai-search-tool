@@ -37,11 +37,11 @@ getDocument config index msg =
         }
 
 
-addDocument : Config -> String -> String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
-addDocument config title content docType msg =
+addDocument : Config -> String -> String -> Maybe String -> String -> (Result Http.Error Document -> msg) -> Cmd msg
+addDocument config title content docType tags msg =
     Http.post
         { url = config.apiUrl ++ "/documents"
-        , body = Http.jsonBody (encodeDocument title content docType)
+        , body = Http.jsonBody (encodeDocument title content docType tags)
         , expect = Http.expectJson msg documentDecoder
         }
 
@@ -93,13 +93,13 @@ clearAllDocuments config msg =
         }
 
 
-updateDocument : Config -> String -> Maybe String -> Maybe String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
-updateDocument config docId title content docType msg =
+updateDocument : Config -> String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
+updateDocument config docId title content docType tags msg =
     Http.request
         { method = "PUT"
         , headers = []
         , url = config.apiUrl ++ "/documents/" ++ docId
-        , body = Http.jsonBody (encodeUpdate title content docType)
+        , body = Http.jsonBody (encodeUpdate title content docType tags)
         , expect = Http.expectJson msg documentDecoder
         , timeout = Nothing
         , tracker = Nothing

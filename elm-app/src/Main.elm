@@ -48,6 +48,7 @@ type alias Model =
     , clusterLoading : Bool
     , windowWidth : Int
     , selectedPDF : Maybe File
+    , expandedClusters : List Int
     }
 
 
@@ -55,6 +56,7 @@ type alias NewDocument =
     { title : String
     , content : String
     , docType : DocType
+    , tags : String
     }
 
 
@@ -82,6 +84,7 @@ type alias EditingDocument =
     , title : String
     , content : String
     , docType : Maybe String
+    , tags : String
     }
 
 
@@ -110,6 +113,7 @@ type Msg
     | UpdateNewDocTitle String
     | UpdateNewDocContent String
     | UpdateNewDocType String
+    | UpdateNewDocTags String
     | AddDocument
     | DocumentAdded (Result Http.Error Document)
     | LoadStats
@@ -123,6 +127,7 @@ type Msg
     | UpdateEditingTitle String
     | UpdateEditingContent String
     | UpdateEditingDocType String
+    | UpdateEditingTags String
     | SaveEditingDocument
     | DocumentRenamed (Result Http.Error ())
     | DocumentUpdated (Result Http.Error Document)
@@ -143,6 +148,7 @@ type Msg
     | UploadPDF
     | OpenPDFNative String
     | KeyPressed String
+    | ToggleClusterExpansion Int
 
 
 type DocType
@@ -297,7 +303,7 @@ init flags =
       , loading = False
       , error = Nothing
       , view = ListView
-      , newDocument = NewDocument "" "" DTMarkDown
+      , newDocument = NewDocument "" "" DTMarkDown ""
       , stats = Nothing
       , editingDocument = Nothing
       , randomDocuments = []
@@ -309,6 +315,7 @@ init flags =
       , clusterLoading = False
       , windowWidth = 800 -- Default width
       , selectedPDF = Nothing
+      , expandedClusters = []
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -430,6 +437,13 @@ update msg model =
                     docTypeFromString value
             in
             ( { model | newDocument = { newDocument_ | docType = docType } }, Cmd.none )
+        
+        UpdateNewDocTags value ->
+            let
+                newDocument_ =
+                    model.newDocument
+            in
+            ( { model | newDocument = { newDocument_ | tags = value } }, Cmd.none )
 
         AddDocument ->
             let
@@ -441,6 +455,7 @@ update msg model =
                 model.newDocument.title
                 model.newDocument.content
                 docType
+                model.newDocument.tags
                 DocumentAdded
             )
 
@@ -451,7 +466,7 @@ update msg model =
                         | loading = False
                         , error = Nothing
                         , view = ListView
-                        , newDocument = NewDocument "" "" DTMarkDown
+                        , newDocument = NewDocument "" "" DTMarkDown ""
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
@@ -500,7 +515,7 @@ update msg model =
             ( { model | randomDocuments = docs }, Cmd.none )
 
         StartEditingDocument doc ->
-            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType) }
+            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType (Maybe.withDefault "" doc.tags)) }
             , Cmd.none
             )
 
@@ -559,6 +574,14 @@ update msg model =
 
                 Nothing ->
                     ( model, Cmd.none )
+        
+        UpdateEditingTags tags ->
+            case model.editingDocument of
+                Just editing ->
+                    ( { model | editingDocument = Just { editing | tags = tags } }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         SaveEditingDocument ->
             case model.editingDocument of
@@ -569,6 +592,7 @@ update msg model =
                         (Just editing.title)
                         (Just editing.content)
                         editing.docType
+                        (Just editing.tags)
                         DocumentUpdated
                     )
 
@@ -762,7 +786,7 @@ update msg model =
             case key of
                 "n" ->
                     -- Ctrl+N: Add Document
-                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown } }
+                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "" } }
                     , Cmd.none
                     )
                 
@@ -792,6 +816,18 @@ update msg model =
                 
                 _ ->
                     ( model, Cmd.none )
+        
+        ToggleClusterExpansion clusterId ->
+            let
+                isExpanded = List.member clusterId model.expandedClusters
+                
+                newExpandedClusters =
+                    if isExpanded then
+                        List.filter (\id -> id /= clusterId) model.expandedClusters
+                    else
+                        clusterId :: model.expandedClusters
+            in
+            ( { model | expandedClusters = newExpandedClusters }, Cmd.none )
 
 
 httpErrorToString : Http.Error -> String
@@ -929,8 +965,21 @@ viewDocumentCard doc =
                 Nothing ->
                     text ""
             ]
-
-        -- Tags removed from API
+        , case doc.tags of
+            Just tags ->
+                if String.isEmpty tags then
+                    text ""
+                else
+                    div [ class "tags" ]
+                        (tags
+                            |> String.split ","
+                            |> List.map String.trim
+                            |> List.filter (not << String.isEmpty)
+                            |> List.map (\tag -> span [ class "tag" ] [ text tag ])
+                        )
+            
+            Nothing ->
+                text ""
         , div [ class "content-preview" ] [ text (truncate 150 doc.content) ]
         ]
 
@@ -953,7 +1002,7 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, index = result.index }) ]
+    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, index = result.index }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
             [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
@@ -1145,6 +1194,21 @@ viewReadOnlyDocument model doc =
                 Nothing ->
                     text ""
             ]
+        , case doc.tags of
+            Just tags ->
+                if String.isEmpty tags then
+                    text ""
+                else
+                    div [ class "tags" ]
+                        (tags
+                            |> String.split ","
+                            |> List.map String.trim
+                            |> List.filter (not << String.isEmpty)
+                            |> List.map (\tag -> span [ class "tag" ] [ text tag ])
+                        )
+            
+            Nothing ->
+                text ""
         , div [ class "document-actions" ]
             (case doc.docType of
                 Just "pdf" ->
@@ -1298,21 +1362,34 @@ viewEditingDocument editing =
     div [ class "document-view editing" ]
         [ button [ onClick (ChangeView ListView), class "back-button" ] [ text "← Back" ]
         , h2 [] [ text editing.title ]
-        , div [ class "document-meta" ]
-            [ span [ class "editing-label" ] [ text "Editing mode" ]
-            ]
-        , div [ class "document-actions" ]
-            [ button
-                [ onClick SaveEditingDocument
-                , class "save-button"
-                , disabled (String.isEmpty editing.title || String.isEmpty editing.content)
+        , div [ class "editing-header" ]
+            [ div [ class "editing-mode-section" ]
+                [ span [ class "editing-label" ] [ text "Editing mode" ]
+                , div [ class "inline-tags-editor" ]
+                    [ label [] [ text "Tags:" ]
+                    , input
+                        [ type_ "text"
+                        , value editing.tags
+                        , onInput UpdateEditingTags
+                        , placeholder "e.g., quantum physics, research, 2023"
+                        , class "inline-tags-input"
+                        ]
+                        []
+                    ]
                 ]
-                [ text "Save" ]
-            , button
-                [ onClick CancelEditingDocument
-                , class "cancel-button"
+            , div [ class "document-actions" ]
+                [ button
+                    [ onClick SaveEditingDocument
+                    , class "save-button"
+                    , disabled (String.isEmpty editing.title || String.isEmpty editing.content)
+                    ]
+                    [ text "Save" ]
+                , button
+                    [ onClick CancelEditingDocument
+                    , class "cancel-button"
+                    ]
+                    [ text "Cancel" ]
                 ]
-                [ text "Cancel" ]
             ]
         , div [ class "form" ]
             [ div [ class "form-group" ]
@@ -1382,6 +1459,17 @@ viewAddDocument model =
                         [ type_ "text"
                         , value (docTypeToString model.newDocument.docType)
                         , onInput UpdateNewDocType
+                        , class "form-input"
+                        ]
+                        []
+                    ]
+                , div [ class "form-group" ]
+                    [ label [] [ text "Tags (comma-separated)" ]
+                    , input
+                        [ type_ "text"
+                        , value model.newDocument.tags
+                        , onInput UpdateNewDocTags
+                        , placeholder "e.g., quantum physics, research, 2023"
                         , class "form-input"
                         ]
                         []
@@ -1515,7 +1603,11 @@ viewStats model =
                 , div [ class "stats-grid" ]
                     [ div [ class "stat-card" ]
                         [ h3 [] [ text "Total Documents" ]
-                        , p [ class "stat-value" ] [ text (String.fromInt stats.totalDocuments) ]
+                        , p [ class "stat-value" ] 
+                            [ text (String.fromInt stats.totalDocuments)
+                            , span [ style "font-size" "0.5em", style "margin-left" "1rem", style "font-weight" "normal" ] 
+                                [ text ("DB: " ++ String.fromFloat stats.databaseSizeKb ++ " KB") ]
+                            ]
                         ]
                     , div [ class "stat-card" ]
                         [ h3 [] [ text "Vector Collections" ]
@@ -1711,7 +1803,7 @@ formatPercent score =
 viewClusters : Model -> Html Msg
 viewClusters model =
     div [ class "clusters-view" ]
-        [ h2 [] [ text "Document Clusters" ]
+        [ h2 [] [ text "Document Clusters - Simple List v2" ]
         , if model.clusterLoading then
             div [ class "loading" ] [ text "Analyzing document clusters..." ]
 
@@ -1723,12 +1815,43 @@ viewClusters model =
                             [ p [] [ text ("Found " ++ String.fromInt clusterResponse.numClusters ++ " clusters") ]
                             , p [] [ text ("Silhouette score: " ++ String.fromFloat (toFloat (round (clusterResponse.silhouetteScore * 100)) / 100)) ]
                             ]
-                        , div [ class "clusters-grid" ]
-                            (List.map (viewCluster model) clusterResponse.clusters)
+                        , div [ class "clusters-list" ]
+                            (List.indexedMap (viewClusterCollapsible model) clusterResponse.clusters)
                         ]
 
                 Nothing ->
                     div [ class "empty-state" ] [ text "No clusters loaded. Click 'Clusters' to analyze." ]
+        ]
+
+
+viewClusterCollapsible : Model -> Int -> Cluster -> Html Msg
+viewClusterCollapsible model index cluster =
+    let
+        _ = Debug.log "Rendering cluster" (cluster.clusterName, index)
+        isExpanded = List.member cluster.clusterId model.expandedClusters
+        
+        totalDocs =
+            case model.clusters of
+                Just clusterResponse ->
+                    clusterResponse.totalDocuments
+                
+                Nothing ->
+                    0
+    in
+    div [ class "cluster-list-item" ]
+        [ div 
+            [ onClick (ToggleClusterExpansion cluster.clusterId)
+            , style "cursor" "pointer"
+            , class "cluster-name-line"
+            ]
+            [ text (String.fromInt (index + 1) ++ ". " ++ cluster.clusterName ++ " (" ++ String.fromInt cluster.size ++ "/" ++ String.fromInt totalDocs ++ ")") ]
+        , if isExpanded then
+            div [ class "cluster-expanded-content" ]
+                [ ul [ class "cluster-doc-list" ]
+                    (List.map viewClusterDocument cluster.documents)
+                ]
+          else
+            text ""
         ]
 
 
@@ -1770,7 +1893,7 @@ viewCluster model cluster =
 
 viewClusterDocument : ClusterDocument -> Html Msg
 viewClusterDocument doc =
-    li []
+    li [ class "cluster-document-item" ]
         [ a
             [ href "#"
             , onClick (SelectDocumentFromCluster doc.id)

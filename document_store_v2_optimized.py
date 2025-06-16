@@ -45,7 +45,7 @@ class DocumentStoreV2Optimized:
                 # If that fails, try normal loading (will download if needed)
                 self.model = SentenceTransformer('all-MiniLM-L6-v2')
     
-    def add_document(self, title: str, content: str, doc_type: Optional[str] = None) -> str:
+    def add_document(self, title: str, content: str, doc_type: Optional[str] = None, tags: Optional[str] = None) -> str:
         """Add a new document to the store"""
         # Ensure model is loaded for embedding generation
         self._load_model()
@@ -61,12 +61,16 @@ class DocumentStoreV2Optimized:
                 id=doc_id,
                 title=title,
                 content=content,
-                doc_type=doc_type
+                doc_type=doc_type,
+                tags=tags
             )
             session.add(document)
             
-            # Generate embedding
-            embedding = self.model.encode(content).tolist()
+            # Generate embedding (include tags in the embedding)
+            embedding_text = content
+            if tags:
+                embedding_text = f"{content}\n\nTags: {tags}"
+            embedding = self.model.encode(embedding_text).tolist()
             
             # Add to ChromaDB with metadata
             self.collection.add(
@@ -180,12 +184,21 @@ class DocumentStoreV2Optimized:
         session = get_session(self.engine)
         try:
             doc_count = session.query(Document).count()
+            
+            # Get database file size in kilobytes
+            db_path = os.path.join(self.storage_dir, 'documents.db')
+            db_size_kb = 0
+            if os.path.exists(db_path):
+                db_size_bytes = os.path.getsize(db_path)
+                db_size_kb = round(db_size_bytes / 1024, 2)
+            
             return {
                 'total_documents': doc_count,
                 'embedding_dimension': self.embedding_dim,
                 'model': 'all-MiniLM-L6-v2',
                 'storage_location': self.storage_dir,
-                'chroma_collection_count': self.collection.count()
+                'chroma_collection_count': self.collection.count(),
+                'database_size_kb': db_size_kb
             }
         finally:
             session.close()
@@ -243,7 +256,7 @@ class DocumentStoreV2Optimized:
         finally:
             session.close()
     
-    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None) -> bool:
+    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None, tags: str = None) -> bool:
         """Update a document's content and metadata"""
         session = get_session(self.engine)
         
@@ -260,13 +273,18 @@ class DocumentStoreV2Optimized:
                 document.content = content
             if doc_type is not None:
                 document.doc_type = doc_type
+            if tags is not None:
+                document.tags = tags
             
             session.commit()
             
-            # If content was updated, we need to update the embedding
-            if content is not None and self.model:
-                # Generate new embedding
-                embedding = self.model.encode([content])[0].tolist()
+            # If content or tags were updated, we need to update the embedding
+            if (content is not None or tags is not None) and self.model:
+                # Generate new embedding (include tags)
+                embedding_text = document.content
+                if document.tags:
+                    embedding_text = f"{document.content}\n\nTags: {document.tags}"
+                embedding = self.model.encode([embedding_text])[0].tolist()
                 
                 # Update in ChromaDB
                 self.collection.update(

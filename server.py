@@ -28,6 +28,7 @@ class DocumentRequest(BaseModel):
     title: str
     content: str
     doc_type: Optional[str] = None
+    tags: Optional[str] = None  # Comma-separated tags
 
 
 class RenameRequest(BaseModel):
@@ -38,6 +39,7 @@ class UpdateRequest(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     doc_type: Optional[str] = None
+    tags: Optional[str] = None  # Comma-separated tags
 
 
 class ClaudeRequest(BaseModel):
@@ -55,7 +57,7 @@ class ClusterRequest(BaseModel):
     num_clusters: Optional[int] = None  # If None, will use silhouette score to find optimal
     min_clusters: Optional[int] = 2
     max_clusters: Optional[int] = 10
-    naming_method: Optional[str] = "v4"  # "v1", "v2", "v3", or "v4", defaults to v4
+    naming_method: Optional[str] = "v5"  # "v1", "v2", "v3", "v4", or "v5", defaults to v5
 
 
 class ClusterResponse(BaseModel):
@@ -74,6 +76,7 @@ class DocumentResponse(BaseModel):
     title: str
     content: str
     doc_type: Optional[str] = None
+    tags: Optional[str] = None
     created_at: Optional[str]
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
@@ -114,7 +117,7 @@ def read_root():
 @app.post("/documents", response_model=DocumentResponse)
 def add_document(doc: DocumentRequest):
     """Add a new document to the store"""
-    doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type)
+    doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type, tags=doc.tags)
     # Fetch the created document
     documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
     if documents:
@@ -127,7 +130,7 @@ def import_documents(documents: List[DocumentRequest]):
     """Import multiple documents"""
     results = []
     for doc in documents:
-        doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type)
+        doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type, tags=doc.tags)
         results.append({"id": doc_id, "title": doc.title})
     return {"imported": len(results), "documents": results}
 
@@ -190,7 +193,7 @@ def rename_document(doc_id: str, request: RenameRequest):
 @app.put("/documents/{doc_id}", response_model=DocumentResponse)
 def update_document(doc_id: str, request: UpdateRequest):
     """Update a document's content and metadata"""
-    if document_store.update_document(doc_id, request.title, request.content, request.doc_type):
+    if document_store.update_document(doc_id, request.title, request.content, request.doc_type, request.tags):
         # Get the updated document
         documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
         if documents:
@@ -574,6 +577,43 @@ def generate_cluster_name(documents: List[dict]) -> str:
         return first_title.split()[:4][-1] if first_title else "Unnamed"
 
 
+def generate_cluster_name_v5(documents, doc_store, representative_id):
+    """
+    Use common tags if available, otherwise fall back to representative title.
+    Prioritizes tags that appear in all or most documents in the cluster.
+    """
+    # Extract tags from all documents
+    all_tags = []
+    for doc in documents:
+        tags_str = doc.get('tags', '')
+        if tags_str:
+            # Split and clean tags
+            doc_tags = [tag.strip().lower() for tag in tags_str.split(',') if tag.strip()]
+            all_tags.extend(doc_tags)
+    
+    if all_tags:
+        # Count tag frequency
+        from collections import Counter
+        tag_counter = Counter(all_tags)
+        total_docs = len(documents)
+        
+        # Find tags that appear in all or most documents
+        common_tags = []
+        for tag, count in tag_counter.most_common():
+            # If a tag appears in at least 80% of documents, consider it common
+            if count >= total_docs * 0.8:
+                common_tags.append(tag)
+        
+        if common_tags:
+            # Use up to 3 most common tags, capitalize properly
+            selected_tags = common_tags[:3]
+            formatted_tags = [tag.title() for tag in selected_tags]
+            return " + ".join(formatted_tags)
+    
+    # Fallback to v4 behavior (representative title)
+    return generate_cluster_name_v4(documents, doc_store, representative_id)
+
+
 def generate_cluster_name_v4(documents, doc_store, representative_id):
     """
     Simply use the representative document's title as the cluster name.
@@ -882,11 +922,19 @@ def get_document_clusters(request: ClusterRequest):
                 cluster_naming_stats['v2_times'].append(elapsed)
                 cluster_naming_stats['v2_total'] += elapsed
                 cluster_naming_stats['v2_count'] += 1
-            else:  # v4 (default)
+            elif request.naming_method == "v4":
                 start_time = time.time()
                 cluster_name = generate_cluster_name_v4(cluster_docs, document_store, representative_id)
                 elapsed = time.time() - start_time
                 # Store v4 stats in v2 slots for now
+                cluster_naming_stats['v2_times'].append(elapsed)
+                cluster_naming_stats['v2_total'] += elapsed
+                cluster_naming_stats['v2_count'] += 1
+            else:  # v5 (default)
+                start_time = time.time()
+                cluster_name = generate_cluster_name_v5(cluster_docs, document_store, representative_id)
+                elapsed = time.time() - start_time
+                # Store v5 stats in v2 slots for now
                 cluster_naming_stats['v2_times'].append(elapsed)
                 cluster_naming_stats['v2_total'] += elapsed
                 cluster_naming_stats['v2_count'] += 1

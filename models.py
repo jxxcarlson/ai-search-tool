@@ -13,6 +13,7 @@ class Document(Base):
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     doc_type = Column(String, nullable=True)  # e.g., 'txt', 'md', 'pdf', 'json'
+    tags = Column(String, nullable=True)  # Comma-separated tags
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -22,6 +23,7 @@ class Document(Base):
             'title': self.title,
             'content': self.content,
             'doc_type': self.doc_type,
+            'tags': self.tags,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
