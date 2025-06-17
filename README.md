@@ -92,6 +92,9 @@ python start.py
 ./start.sh --api-port 8011 --web-port 8081
 # or
 python start.py --api-port 8011 --web-port 8081
+
+# Start with a clean database (deletes all existing data):
+./start.sh --clean
 ```
 
 This will:
@@ -234,6 +237,28 @@ python import_data.py exports/ai_search_tool_export_20240117_143022.tar.gz
 ```
 
 See [DATA_EXPORT_IMPORT.md](DATA_EXPORT_IMPORT.md) for detailed instructions.
+
+### Database Management
+
+```bash
+# Start with a clean database (deletes all data):
+./start.sh --clean
+
+# Reset database manually:
+python reset_database.py
+
+# Initialize empty database structure:
+python init_database.py
+
+# Reset without backup (use with caution):
+python reset_database.py --no-backup --confirm
+```
+
+The reset functionality:
+- Creates a backup by default (in `backups/` directory)
+- Removes all documents, PDFs, and vector data
+- Recreates the directory structure
+- Initializes an empty database
 
 ## Troubleshooting
 

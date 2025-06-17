@@ -53,6 +53,7 @@ def main():
     parser = argparse.ArgumentParser(description='Start the AI Search Tool')
     parser.add_argument('--api-port', type=int, default=8010, help='API server port (default: 8010)')
     parser.add_argument('--web-port', type=int, default=8080, help='Web server port (default: 8080)')
+    parser.add_argument('--clean', '--reset', action='store_true', help='Start with a clean database (deletes all data)')
     args = parser.parse_args()
     
     global api_process, web_process
@@ -62,6 +63,26 @@ def main():
     signal.signal(signal.SIGTERM, cleanup)
     
     print(f"{BLUE}Starting AI Search Tool...{NC}")
+    
+    # Handle clean start if requested
+    if args.clean:
+        print(f"\n{RED}⚠️  Clean start requested!{NC}")
+        print(f"{RED}This will delete all documents and data.{NC}")
+        response = input("Are you sure you want to continue? (yes/N): ")
+        
+        if response.lower() != 'yes':
+            print(f"{RED}Clean start cancelled.{NC}")
+            sys.exit(0)
+        
+        print(f"{BLUE}Resetting database...{NC}")
+        result = subprocess.run([sys.executable, "reset_database.py", "--confirm"])
+        
+        if result.returncode != 0:
+            print(f"{RED}Failed to reset database!{NC}")
+            sys.exit(1)
+        
+        print(f"{GREEN}✓ Database reset complete{NC}")
+        print()
     
     # Check if virtual environment exists
     if not Path("venv").exists():
@@ -109,7 +130,7 @@ def main():
     else:
         python_exe = "venv/bin/python"
     
-    api_process = subprocess.Popen([python_exe, "server.py", str(args.api_port)])
+    api_process = subprocess.Popen([python_exe, "server/server.py", str(args.api_port)])
     
     # Wait for API server to start
     for i in range(10):

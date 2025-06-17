@@ -9,6 +9,7 @@ NC='\033[0m' # No Color
 # Default ports
 API_PORT=8010
 WEB_PORT=8080
+CLEAN_START=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -21,11 +22,16 @@ while [[ $# -gt 0 ]]; do
       WEB_PORT="$2"
       shift 2
       ;;
+    --clean|--reset)
+      CLEAN_START=true
+      shift
+      ;;
     -h|--help)
       echo "Usage: ./start.sh [OPTIONS]"
       echo "Options:"
       echo "  --api-port PORT    API server port (default: 8010)"
       echo "  --web-port PORT    Web server port (default: 8080)"
+      echo "  --clean, --reset   Start with a clean database (deletes all data)"
       echo "  -h, --help         Show this help message"
       exit 0
       ;;
@@ -38,6 +44,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo -e "${BLUE}Starting AI Search Tool...${NC}"
+
+# Handle clean start if requested
+if [ "$CLEAN_START" = true ]; then
+    echo -e "${YELLOW}⚠️  Clean start requested!${NC}"
+    echo -e "${YELLOW}This will delete all documents and data.${NC}"
+    read -p "Are you sure you want to continue? (yes/N): " confirm
+    
+    if [ "$confirm" != "yes" ]; then
+        echo -e "${RED}Clean start cancelled.${NC}"
+        exit 0
+    fi
+    
+    echo -e "${BLUE}Resetting database...${NC}"
+    python reset_database.py --confirm
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to reset database!${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✓ Database reset complete${NC}"
+    echo
+fi
 
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
