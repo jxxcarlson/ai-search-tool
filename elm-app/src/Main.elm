@@ -9,7 +9,7 @@ import File exposing (File)
 import File.Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick, onInput, on, stopPropagationOn)
+import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
 import Http
 import Json.Decode as Decode
 import Markdown.Html
@@ -74,7 +74,7 @@ docTypeToString docType =
 
         DTClaudeResponse ->
             "claude-response"
-        
+
         DTPDF ->
             "pdf"
 
@@ -174,7 +174,7 @@ docTypeFromString str =
 
         "claude-response" ->
             DTClaudeResponse
-        
+
         "pdf" ->
             DTPDF
 
@@ -195,23 +195,26 @@ inferDocType content =
 
         hasLatexCommands =
             -- Look for \command{...} pattern
-            String.contains "\\" content && 
-            (String.contains "{" content || String.contains "}" content)
+            String.contains "\\" content
+                && (String.contains "{" content || String.contains "}" content)
 
-        -- Check for Scripta patterns  
+        -- Check for Scripta patterns
         hasScriptaTitle =
             String.contains "| title " topContent
 
         hasScriptaBrackets =
             -- Look for [command ...] pattern
-            String.contains "[" content && String.contains "]" content &&
-            -- Make sure it's not just a markdown link
-            not (String.contains "](http" content || String.contains "](/" content)
+            String.contains "[" content
+                && String.contains "]" content
+                && -- Make sure it's not just a markdown link
+                   not (String.contains "](http" content || String.contains "](/" content)
     in
     if hasLatexTitle || hasLatexCommands then
         DTLaTeX
+
     else if hasScriptaTitle || hasScriptaBrackets then
         DTScripta
+
     else
         DTMarkDown
 
@@ -224,48 +227,51 @@ inferTitle content docType =
             case String.indexes "\\title{" content of
                 [] ->
                     Nothing
-                    
+
                 index :: _ ->
                     let
                         afterTitle =
                             String.dropLeft (index + 7) content
-                        
+
                         -- Find the closing brace
                         closingIndex =
                             String.indexes "}" afterTitle
                                 |> List.head
                                 |> Maybe.withDefault 0
-                        
+
                         title =
                             String.left closingIndex afterTitle
                                 |> String.trim
                     in
                     if String.isEmpty title then
                         Nothing
+
                     else
                         Just title
-        
+
         DTScripta ->
             -- Look for | title\nSTRING pattern
             case String.indexes "| title" content of
                 [] ->
                     Nothing
-                    
+
                 index :: _ ->
                     let
                         afterTitle =
                             String.dropLeft (index + 7) content
                                 |> String.lines
-                                |> List.drop 1  -- Skip the "| title" line
+                                |> List.drop 1
+                                -- Skip the "| title" line
                                 |> List.head
                                 |> Maybe.withDefault ""
                                 |> String.trim
                     in
                     if String.isEmpty afterTitle then
                         Nothing
+
                     else
                         Just afterTitle
-        
+
         DTMarkDown ->
             -- Look for first # STRING
             content
@@ -273,17 +279,19 @@ inferTitle content docType =
                 |> List.filter (String.startsWith "# ")
                 |> List.head
                 |> Maybe.map (String.dropLeft 2 >> String.trim)
-                |> Maybe.andThen (\title -> 
-                    if String.isEmpty title then 
-                        Nothing 
-                    else 
-                        Just title
-                )
-        
+                |> Maybe.andThen
+                    (\title ->
+                        if String.isEmpty title then
+                            Nothing
+
+                        else
+                            Just title
+                    )
+
         DTClaudeResponse ->
             -- Claude responses might have markdown titles
             inferTitle content DTMarkDown
-        
+
         DTPDF ->
             -- PDF titles should be provided during upload
             Nothing
@@ -414,16 +422,17 @@ update msg model =
             let
                 newDoc =
                     model.newDocument
-                
+
                 -- Auto-detect document type from content
                 detectedType =
                     inferDocType value
-                
+
                 -- Auto-infer title if current title is empty
                 newTitle =
                     if String.isEmpty newDoc.title then
                         inferTitle value detectedType
                             |> Maybe.withDefault newDoc.title
+
                     else
                         newDoc.title
             in
@@ -438,7 +447,7 @@ update msg model =
                     docTypeFromString value
             in
             ( { model | newDocument = { newDocument_ | docType = docType } }, Cmd.none )
-        
+
         UpdateNewDocTags value ->
             let
                 newDocument_ =
@@ -538,15 +547,16 @@ update msg model =
                         -- Auto-detect document type from content
                         detectedDocType =
                             inferDocType content
-                            
+
                         detectedTypeString =
                             docTypeToString detectedDocType
-                        
+
                         -- Auto-infer title if current title is empty
                         newTitle =
                             if String.isEmpty editing.title then
                                 inferTitle content detectedDocType
                                     |> Maybe.withDefault editing.title
+
                             else
                                 editing.title
                     in
@@ -575,7 +585,7 @@ update msg model =
 
                 Nothing ->
                     ( model, Cmd.none )
-        
+
         UpdateEditingTags tags ->
             case model.editingDocument of
                 Just editing ->
@@ -738,29 +748,29 @@ update msg model =
 
         GotViewport viewport ->
             ( { model | windowWidth = round viewport.viewport.width }, Cmd.none )
-        
+
         SelectPDFFile ->
             ( model
-            , File.Select.file ["application/pdf"] PDFSelected
+            , File.Select.file [ "application/pdf" ] PDFSelected
             )
-        
+
         PDFSelected file ->
             ( { model | selectedPDF = Just file }, Cmd.none )
-        
+
         UploadPDF ->
             case model.selectedPDF of
                 Just file ->
                     ( { model | loading = True }
                     , Api.uploadPDF model.config file PDFUploaded
                     )
-                    
+
                 Nothing ->
                     ( model, Cmd.none )
-        
+
         PDFUploaded result ->
             case result of
                 Ok document ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , error = Nothing
                         , selectedPDF = Nothing
@@ -769,20 +779,21 @@ update msg model =
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
-                    
+
                 Err error ->
                     ( { model | loading = False, error = Just (httpErrorToString error) }
                     , Cmd.none
                     )
-        
+
         OpenPDFNative filename ->
             let
-                _ = Debug.log "OpenPDFNative called with filename" filename
+                _ =
+                    Debug.log "OpenPDFNative called with filename" filename
             in
             ( model
             , Api.openPDFNative model.config filename NoOp
             )
-        
+
         KeyPressed key ->
             case key of
                 "n" ->
@@ -790,51 +801,53 @@ update msg model =
                     ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "" } }
                     , Cmd.none
                     )
-                
+
                 "c" ->
                     -- Ctrl+C: Ask Claude
                     ( { model | view = ClaudeView }
                     , Cmd.none
                     )
-                
+
                 "l" ->
                     -- Ctrl+L: Documents
                     ( { model | view = ListView, loading = True }
                     , Api.getDocuments model.config GotDocuments
                     )
-                
-                "g" ->
-                    -- Ctrl+G: Clusters
+
+                "k" ->
+                    -- Ctrl+K: Clusters
                     ( { model | view = ClustersView, clusterLoading = True }
                     , Api.getClusters model.config Nothing GotClusters
                     )
-                
+
                 "r" ->
                     -- Ctrl+R: Random
                     ( { model | view = RandomView }
                     , Task.perform GotCurrentTime Time.now
                     )
-                
+
                 _ ->
                     ( model, Cmd.none )
-        
+
         ToggleClusterExpansion clusterId ->
             let
-                isExpanded = List.member clusterId model.expandedClusters
-                
+                isExpanded =
+                    List.member clusterId model.expandedClusters
+
                 newExpandedClusters =
                     if isExpanded then
                         List.filter (\id -> id /= clusterId) model.expandedClusters
+
                     else
                         clusterId :: model.expandedClusters
             in
             ( { model | expandedClusters = newExpandedClusters }, Cmd.none )
-        
+
         NavigateToCluster clusterId ->
-            ( { model 
+            ( { model
                 | view = ClustersView
                 , clusterLoading = True
-                , expandedClusters = [clusterId]  -- Expand only the selected cluster
+                , expandedClusters = [ clusterId ] -- Expand only the selected cluster
               }
             , Api.getClusters model.config Nothing GotClusters
             )
@@ -896,25 +909,25 @@ viewHeader model =
     header [ class "app-header" ]
         [ h1 [] [ text "AI Search Tool" ]
         , nav []
-            [ button [ onClick (ChangeView ListView), class "nav-button", title "Ctrl+L" ] 
+            [ button [ onClick (ChangeView ListView), class "nav-button", title "Ctrl+L" ]
                 [ text "Documents"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+L)" ]
                 ]
-            , button [ onClick (ChangeView AddDocumentView), class "nav-button", title "Ctrl+N" ] 
+            , button [ onClick (ChangeView AddDocumentView), class "nav-button", title "Ctrl+N" ]
                 [ text "Add Document"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+N)" ]
                 ]
-            , button [ onClick (ChangeView ClaudeView), class "nav-button", title "Ctrl+C" ] 
+            , button [ onClick (ChangeView ClaudeView), class "nav-button", title "Ctrl+C" ]
                 [ text "Ask Claude"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+C)" ]
                 ]
-            , button [ onClick LoadRandomDocuments, class "nav-button", title "Ctrl+R" ] 
+            , button [ onClick LoadRandomDocuments, class "nav-button", title "Ctrl+R" ]
                 [ text "Random"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+R)" ]
                 ]
-            , button [ onClick LoadClusters, class "nav-button", title "Ctrl+G" ] 
+            , button [ onClick LoadClusters, class "nav-button", title "Ctrl+K" ]
                 [ text "Clusters"
-                , span [ class "shortcut-hint" ] [ text " (Ctrl+G)" ]
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+K)" ]
                 ]
             , button [ onClick LoadStats, class "nav-button" ] [ text "Stats" ]
             ]
@@ -981,24 +994,25 @@ viewDocumentCard doc =
                     Just clusterId ->
                         div [ class "cluster-info" ]
                             [ span [ class "cluster-label" ] [ text "Cluster: " ]
-                            , a 
+                            , a
                                 [ href "#"
                                 , onClick (NavigateToCluster clusterId)
                                 , class "cluster-link"
-                                , stopPropagationOn "click" (Decode.succeed (NavigateToCluster clusterId, True))
+                                , stopPropagationOn "click" (Decode.succeed ( NavigateToCluster clusterId, True ))
                                 ]
                                 [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
                             ]
-                    
+
                     Nothing ->
                         text ""
-            
+
             Nothing ->
                 text ""
         , case doc.tags of
             Just tags ->
                 if String.isEmpty tags then
                     text ""
+
                 else
                     div [ class "tags" ]
                         (tags
@@ -1007,7 +1021,7 @@ viewDocumentCard doc =
                             |> List.filter (not << String.isEmpty)
                             |> List.map (\tag -> span [ class "tag" ] [ text tag ])
                         )
-            
+
             Nothing ->
                 text ""
         , div [ class "content-preview" ] [ text (truncate 150 doc.content) ]
@@ -1049,18 +1063,18 @@ viewSearchResult result =
                     Just clusterId ->
                         div [ class "cluster-info" ]
                             [ span [ class "cluster-label" ] [ text "Cluster: " ]
-                            , a 
+                            , a
                                 [ href "#"
                                 , onClick (NavigateToCluster clusterId)
                                 , class "cluster-link"
-                                , stopPropagationOn "click" (Decode.succeed (NavigateToCluster clusterId, True))
+                                , stopPropagationOn "click" (Decode.succeed ( NavigateToCluster clusterId, True ))
                                 ]
                                 [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
                             ]
-                    
+
                     Nothing ->
                         text ""
-            
+
             Nothing ->
                 text ""
         , case result.similarityScore of
@@ -1113,17 +1127,17 @@ extractPDFFilename content =
     case String.indexes "[PDF_FILE:" content of
         [] ->
             ""
-            
+
         index :: _ ->
             let
                 afterMarker =
                     String.dropLeft (index + 10) content
-                
+
                 endIndex =
                     String.indexes "]" afterMarker
                         |> List.head
                         |> Maybe.withDefault 0
-                
+
                 filename =
                     String.left endIndex afterMarker
             in
@@ -1135,61 +1149,81 @@ extractPDFMetadata content =
     case String.indexes "[PDF_META:" content of
         [] ->
             Nothing
-            
+
         index :: _ ->
             let
                 afterMarker =
                     String.dropLeft (index + 10) content
-                
+
                 endIndex =
                     String.indexes "]" afterMarker
                         |> List.head
                         |> Maybe.withDefault 0
-                
+
                 metaJson =
                     String.left endIndex afterMarker
-                    
+
                 extractPages json =
                     case String.indexes "\"pages\":" json of
-                        [] -> 0
+                        [] ->
+                            0
+
                         idx :: _ ->
                             let
-                                afterField = String.dropLeft (idx + 8) json
+                                afterField =
+                                    String.dropLeft (idx + 8) json
                             in
                             afterField
                                 |> String.split ","
                                 |> List.head
                                 |> Maybe.andThen String.toInt
                                 |> Maybe.withDefault 0
-                                
+
                 extractThumbnails json =
                     case String.indexes "\"thumbnails\":" json of
-                        [] -> []
+                        [] ->
+                            []
+
                         idx :: _ ->
                             let
-                                afterField = String.dropLeft (idx + 13) json
+                                afterField =
+                                    String.dropLeft (idx + 13) json
                             in
                             case String.indexes "[" afterField of
-                                [] -> []
+                                [] ->
+                                    []
+
                                 arrIdx :: _ ->
                                     let
-                                        afterBracket = String.dropLeft (arrIdx + 1) afterField
-                                        endIdx = String.indexes "]" afterBracket |> List.head |> Maybe.withDefault 0
-                                        arrayContent = String.left endIdx afterBracket
+                                        afterBracket =
+                                            String.dropLeft (arrIdx + 1) afterField
+
+                                        endIdx =
+                                            String.indexes "]" afterBracket |> List.head |> Maybe.withDefault 0
+
+                                        arrayContent =
+                                            String.left endIdx afterBracket
                                     in
                                     if String.isEmpty arrayContent then
                                         []
+
                                     else
                                         arrayContent
                                             |> String.split ","
                                             |> List.map (String.trim >> String.replace "\"" "")
-                                
-                pages = extractPages metaJson
-                thumbnails = extractThumbnails metaJson
-                filename = extractPDFFilename content
+
+                pages =
+                    extractPages metaJson
+
+                thumbnails =
+                    extractThumbnails metaJson
+
+                filename =
+                    extractPDFFilename content
             in
             if String.isEmpty filename then
                 Nothing
+
             else
                 Just { filename = filename, pages = pages, thumbnails = thumbnails }
 
@@ -1197,19 +1231,23 @@ extractPDFMetadata content =
 viewThumbnail : String -> String -> Html Msg
 viewThumbnail apiUrl thumbFilename =
     div [ class "pdf-thumbnail" ]
-        [ img 
+        [ img
             [ src (apiUrl ++ "/pdf/thumbnail/" ++ thumbFilename)
             , alt ("Page " ++ (thumbFilename |> String.split "_" |> List.reverse |> List.head |> Maybe.withDefault ""))
             , class "thumbnail-image"
             ]
             []
-        , p [ class "thumbnail-label" ] 
-            [ text ("Page " ++ (thumbFilename 
-                |> String.split "_" 
-                |> List.reverse 
-                |> List.head 
-                |> Maybe.andThen (String.split "." >> List.head)
-                |> Maybe.withDefault ""))
+        , p [ class "thumbnail-label" ]
+            [ text
+                ("Page "
+                    ++ (thumbFilename
+                            |> String.split "_"
+                            |> List.reverse
+                            |> List.head
+                            |> Maybe.andThen (String.split "." >> List.head)
+                            |> Maybe.withDefault ""
+                       )
+                )
             ]
         ]
 
@@ -1250,23 +1288,24 @@ viewReadOnlyDocument model doc =
                     Just clusterId ->
                         div [ class "cluster-info" ]
                             [ span [ class "cluster-label" ] [ text "Cluster: " ]
-                            , a 
+                            , a
                                 [ href "#"
                                 , onClick (NavigateToCluster clusterId)
                                 , class "cluster-link"
                                 ]
                                 [ text (String.fromInt (clusterId + 1) ++ ". " ++ clusterName) ]
                             ]
-                    
+
                     Nothing ->
                         text ""
-            
+
             Nothing ->
                 text ""
         , case doc.tags of
             Just tags ->
                 if String.isEmpty tags then
                     text ""
+
                 else
                     div [ class "tags" ]
                         (tags
@@ -1275,7 +1314,7 @@ viewReadOnlyDocument model doc =
                             |> List.filter (not << String.isEmpty)
                             |> List.map (\tag -> span [ class "tag" ] [ text tag ])
                         )
-            
+
             Nothing ->
                 text ""
         , div [ class "document-actions" ]
@@ -1285,13 +1324,14 @@ viewReadOnlyDocument model doc =
                     , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
                     , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
                     ]
-                    
+
                 _ ->
                     if String.startsWith "[PDF_FILE:" doc.content then
                         [ button [ onClick (OpenPDFNative (extractPDFFilename doc.content)), class "open-button" ] [ text "Open PDF" ]
                         , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
                         , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
                         ]
+
                     else
                         [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
                         , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
@@ -1327,14 +1367,16 @@ viewReadOnlyDocument model doc =
             Just "claude-response" ->
                 div [ class "document-content" ]
                     [ renderMarkdown doc.content ]
-            
+
             Just "pdf" ->
                 let
-                    filename = extractPDFFilename doc.content
+                    filename =
+                        extractPDFFilename doc.content
                 in
                 if String.isEmpty filename then
                     div [ class "document-content" ]
                         [ text "PDF file not found" ]
+
                 else
                     div [ class "document-content pdf-content" ]
                         [ -- Try to extract thumbnail info
@@ -1346,6 +1388,7 @@ viewReadOnlyDocument model doc =
                                         [ p [] [ text "PDF viewer blocked by browser security settings." ]
                                         , p [] [ text "Use the 'Open PDF' button above to view this document." ]
                                         ]
+
                                 else
                                     -- Show thumbnails
                                     div [ class "pdf-thumbnails" ]
@@ -1353,7 +1396,7 @@ viewReadOnlyDocument model doc =
                                         , div [ class "thumbnail-grid" ]
                                             (List.map (viewThumbnail model.config.apiUrl) meta.thumbnails)
                                         ]
-                            
+
                             Nothing ->
                                 -- No metadata, show fallback message
                                 div [ class "pdf-iframe-fallback" ]
@@ -1367,26 +1410,27 @@ viewReadOnlyDocument model doc =
                 if String.startsWith "[PDF_FILE:" doc.content then
                     let
                         -- Extract PDF filename from content
-                        pdfFilename = 
+                        pdfFilename =
                             case String.indexes "[PDF_FILE:" doc.content of
                                 [] ->
                                     Nothing
-                                
+
                                 index :: _ ->
                                     let
                                         afterMarker =
                                             String.dropLeft (index + 10) doc.content
-                                        
+
                                         endIndex =
                                             String.indexes "]" afterMarker
                                                 |> List.head
                                                 |> Maybe.withDefault 0
-                                        
+
                                         filename =
                                             String.left endIndex afterMarker
                                     in
                                     if String.isEmpty filename then
                                         Nothing
+
                                     else
                                         Just filename
                     in
@@ -1405,10 +1449,11 @@ viewReadOnlyDocument model doc =
                                         []
                                     ]
                                 ]
-                        
+
                         Nothing ->
                             div [ class "document-content" ]
                                 [ text "PDF file not found" ]
+
                 else
                     div [ class "document-content" ]
                         [ Html.text "Unsupported document type" ]
@@ -1560,11 +1605,11 @@ viewAddDocument model =
                             , class "upload-button"
                             ]
                             [ text "Select PDF File" ]
-                    
+
                     Just file ->
                         div []
-                            [ p [ class "selected-file" ] 
-                                [ text ("Selected: " ++ File.name file) 
+                            [ p [ class "selected-file" ]
+                                [ text ("Selected: " ++ File.name file)
                                 ]
                             , button
                                 [ onClick UploadPDF
@@ -1573,6 +1618,7 @@ viewAddDocument model =
                                 ]
                                 [ if model.loading then
                                     text "Uploading..."
+
                                   else
                                     text "Upload PDF"
                                 ]
@@ -1582,7 +1628,7 @@ viewAddDocument model =
                                 ]
                                 [ text "Change File" ]
                             ]
-                , p [ class "pdf-info" ] 
+                , p [ class "pdf-info" ]
                     [ text "PDF files will be indexed for search but displayed read-only." ]
                 ]
             ]
@@ -1672,10 +1718,10 @@ viewStats model =
                 , div [ class "stats-grid" ]
                     [ div [ class "stat-card" ]
                         [ h3 [] [ text "Documents" ]
-                        , p [ class "stat-value", style "display" "flex", style "align-items" "center", style "justify-content" "center" ] 
+                        , p [ class "stat-value", style "display" "flex", style "align-items" "center", style "justify-content" "center" ]
                             [ text (String.fromInt stats.totalDocuments)
-                            , span [ style "font-size" "0.5em", style "margin-left" "1rem", style "font-weight" "normal" ] 
-                                [ text ("DB: " ++ String.fromFloat stats.databaseSizeKb ++ " KB") ]
+                            , span [ style "font-size" "0.5em", style "margin-left" "1rem", style "font-weight" "normal" ]
+                                [ text ("DB: " ++ formatDatabaseSize stats.databaseSizeKb) ]
                             ]
                         ]
                     , div [ class "stat-card" ]
@@ -1869,10 +1915,27 @@ formatPercent score =
     String.fromFloat rounded ++ "%"
 
 
+formatDatabaseSize : Float -> String
+formatDatabaseSize sizeKb =
+    if sizeKb >= 1024 then
+        let
+            sizeMb =
+                sizeKb / 1024
+
+            -- Round to 2 decimal places
+            rounded =
+                toFloat (round (sizeMb * 100)) / 100
+        in
+        String.fromFloat rounded ++ " MB"
+
+    else
+        String.fromFloat sizeKb ++ " KB"
+
+
 viewClusters : Model -> Html Msg
 viewClusters model =
     div [ class "clusters-view" ]
-        [ h2 [] [ text "Document Clusters - Simple List v2" ]
+        [ h2 [] [ text "Clusters" ]
         , if model.clusterLoading then
             div [ class "loading" ] [ text "Analyzing document clusters..." ]
 
@@ -1896,19 +1959,22 @@ viewClusters model =
 viewClusterCollapsible : Model -> Int -> Cluster -> Html Msg
 viewClusterCollapsible model index cluster =
     let
-        _ = Debug.log "Rendering cluster" (cluster.clusterName, index)
-        isExpanded = List.member cluster.clusterId model.expandedClusters
-        
+        _ =
+            Debug.log "Rendering cluster" ( cluster.clusterName, index )
+
+        isExpanded =
+            List.member cluster.clusterId model.expandedClusters
+
         totalDocs =
             case model.clusters of
                 Just clusterResponse ->
                     clusterResponse.totalDocuments
-                
+
                 Nothing ->
                     0
     in
     div [ class "cluster-list-item" ]
-        [ div 
+        [ div
             [ onClick (ToggleClusterExpansion cluster.clusterId)
             , style "cursor" "pointer"
             , class "cluster-name-line"
@@ -1919,6 +1985,7 @@ viewClusterCollapsible model index cluster =
                 [ ul [ class "cluster-doc-list" ]
                     (List.map viewClusterDocument cluster.documents)
                 ]
+
           else
             text ""
         ]
@@ -2039,21 +2106,22 @@ toKeyMsg key ctrlPressed =
         case String.toLower key of
             "n" ->
                 KeyPressed "n"
-            
+
             "c" ->
                 KeyPressed "c"
-            
+
             "l" ->
                 KeyPressed "l"
-            
-            "g" ->
-                KeyPressed "g"
-            
+
+            "k" ->
+                KeyPressed "k"
+
             "r" ->
                 KeyPressed "r"
-            
+
             _ ->
                 NoOp
+
     else
         NoOp
 
