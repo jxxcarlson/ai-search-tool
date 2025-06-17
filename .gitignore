@@ -106,3 +106,6 @@ elm-app/main.js
 elm-app/elm-stuff/0.19.1/*.elmi
 elm-app/elm-stuff/0.19.1/*.elmo
 elm-app/elm-stuff/0.19.1/*.dat
+
+/exports
+
