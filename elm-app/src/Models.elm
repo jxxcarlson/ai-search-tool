@@ -77,6 +77,16 @@ type alias ClusterResponse =
     }
 
 
+type alias DatabaseInfo =
+    { id : String
+    , name : String
+    , createdAt : String
+    , description : Maybe String
+    , documentCount : Int
+    , lastAccessed : String
+    }
+
+
 
 documentDecoder : Decoder Document
 documentDecoder =
@@ -224,3 +234,22 @@ encodeClusterRequest numClusters =
 encodeOpenPDF : String -> Encode.Value
 encodeOpenPDF filename =
     Encode.object [ ( "filename", Encode.string filename ) ]
+
+
+databaseInfoDecoder : Decoder DatabaseInfo
+databaseInfoDecoder =
+    Decode.map6 DatabaseInfo
+        (Decode.field "id" Decode.string)
+        (Decode.field "name" Decode.string)
+        (Decode.field "created_at" Decode.string)
+        (Decode.maybe (Decode.field "description" Decode.string))
+        (Decode.field "document_count" Decode.int)
+        (Decode.field "last_accessed" Decode.string)
+
+
+encodeCreateDatabase : String -> Maybe String -> Encode.Value
+encodeCreateDatabase name description =
+    Encode.object
+        [ ( "name", Encode.string name )
+        , ( "description", encodeMaybe Encode.string description )
+        ]

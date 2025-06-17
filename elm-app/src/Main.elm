@@ -49,6 +49,12 @@ type alias Model =
     , windowWidth : Int
     , selectedPDF : Maybe File
     , expandedClusters : List Int
+    , currentDatabase : Maybe DatabaseInfo
+    , databases : List DatabaseInfo
+    , showDatabaseMenu : Bool
+    , showCreateDatabaseModal : Bool
+    , newDatabaseName : String
+    , newDatabaseDescription : String
     }
 
 
@@ -150,6 +156,18 @@ type Msg
     | KeyPressed String
     | ToggleClusterExpansion Int
     | NavigateToCluster Int
+    | GotCurrentDatabase (Result Http.Error DatabaseInfo)
+    | GotDatabases (Result Http.Error (List DatabaseInfo))
+    | ShowDatabaseMenu
+    | HideDatabaseMenu
+    | ShowCreateDatabaseModal
+    | HideCreateDatabaseModal
+    | UpdateNewDatabaseName String
+    | UpdateNewDatabaseDescription String
+    | CreateDatabase
+    | DatabaseCreated (Result Http.Error DatabaseInfo)
+    | SwitchDatabase String
+    | DatabaseSwitched (Result Http.Error DatabaseInfo)
 
 
 type DocType
@@ -325,10 +343,17 @@ init flags =
       , windowWidth = 800 -- Default width
       , selectedPDF = Nothing
       , expandedClusters = []
+      , currentDatabase = Nothing
+      , databases = []
+      , showDatabaseMenu = False
+      , showCreateDatabaseModal = False
+      , newDatabaseName = ""
+      , newDatabaseDescription = ""
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
         , Task.perform GotViewport Browser.Dom.getViewport
+        , Api.getCurrentDatabase (Api.Config flags.apiUrl) GotCurrentDatabase
         ]
     )
 
@@ -852,6 +877,125 @@ update msg model =
             , Api.getClusters model.config Nothing GotClusters
             )
 
+        GotCurrentDatabase result ->
+            case result of
+                Ok database ->
+                    ( { model | currentDatabase = Just database }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        GotDatabases result ->
+            case result of
+                Ok databases ->
+                    ( { model | databases = databases }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( { model | error = Just "Failed to load databases" }
+                    , Cmd.none
+                    )
+
+        ShowDatabaseMenu ->
+            ( { model | showDatabaseMenu = True }
+            , Api.getDatabases model.config GotDatabases
+            )
+
+        HideDatabaseMenu ->
+            ( { model | showDatabaseMenu = False }
+            , Cmd.none
+            )
+
+        ShowCreateDatabaseModal ->
+            ( { model 
+                | showCreateDatabaseModal = True
+                , showDatabaseMenu = False
+                , newDatabaseName = ""
+                , newDatabaseDescription = ""
+              }
+            , Cmd.none
+            )
+
+        HideCreateDatabaseModal ->
+            ( { model | showCreateDatabaseModal = False }
+            , Cmd.none
+            )
+
+        UpdateNewDatabaseName name ->
+            ( { model | newDatabaseName = name }
+            , Cmd.none
+            )
+
+        UpdateNewDatabaseDescription description ->
+            ( { model | newDatabaseDescription = description }
+            , Cmd.none
+            )
+
+        CreateDatabase ->
+            let
+                description =
+                    if String.isEmpty model.newDatabaseDescription then
+                        Nothing
+                    else
+                        Just model.newDatabaseDescription
+            in
+            ( { model | loading = True }
+            , Api.createDatabase model.config model.newDatabaseName description DatabaseCreated
+            )
+
+        DatabaseCreated result ->
+            case result of
+                Ok database ->
+                    ( { model 
+                        | loading = False
+                        , showCreateDatabaseModal = False
+                        , currentDatabase = Just database
+                        , databases = database :: model.databases
+                      }
+                    , Cmd.batch
+                        [ Api.getDocuments model.config GotDocuments
+                        , Api.switchDatabase model.config database.id DatabaseSwitched
+                        ]
+                    )
+
+                Err _ ->
+                    ( { model 
+                        | loading = False
+                        , error = Just "Failed to create database"
+                      }
+                    , Cmd.none
+                    )
+
+        SwitchDatabase databaseId ->
+            ( { model | loading = True }
+            , Api.switchDatabase model.config databaseId DatabaseSwitched
+            )
+
+        DatabaseSwitched result ->
+            case result of
+                Ok database ->
+                    ( { model 
+                        | loading = False
+                        , currentDatabase = Just database
+                        , showDatabaseMenu = False
+                        , documents = []
+                        , searchResults = []
+                        , selectedDocument = Nothing
+                      }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+
+                Err _ ->
+                    ( { model 
+                        | loading = False
+                        , error = Just "Failed to switch database"
+                      }
+                    , Cmd.none
+                    )
+
 
 httpErrorToString : Http.Error -> String
 httpErrorToString error =
@@ -901,6 +1045,86 @@ view model =
 
             ClustersView ->
                 viewClusters model
+        , if model.showCreateDatabaseModal then
+            viewCreateDatabaseModal model
+          else
+            text ""
+        ]
+
+
+viewDatabaseMenu : Model -> Html Msg
+viewDatabaseMenu model =
+    div [ class "database-dropdown-menu" ]
+        [ ul [ class "database-list" ]
+            (List.map (viewDatabaseMenuItem model) model.databases
+                ++ [ li 
+                        [ class "database-menu-item create-new"
+                        , onClick ShowCreateDatabaseModal 
+                        ]
+                        [ text "Create New Database..." ]
+                   ]
+            )
+        ]
+
+
+viewDatabaseMenuItem : Model -> DatabaseInfo -> Html Msg
+viewDatabaseMenuItem model database =
+    let
+        isActive = 
+            model.currentDatabase
+                |> Maybe.map (\db -> db.id == database.id)
+                |> Maybe.withDefault False
+    in
+    li 
+        [ class (if isActive then "database-menu-item active" else "database-menu-item")
+        , onClick (SwitchDatabase database.id)
+        ]
+        [ span [ class "database-item-name" ] [ text database.name ]
+        , span [ class "database-item-count" ] [ text ("(" ++ String.fromInt database.documentCount ++ " docs)") ]
+        ]
+
+
+viewCreateDatabaseModal : Model -> Html Msg
+viewCreateDatabaseModal model =
+    div [ class "modal-overlay", onClick HideCreateDatabaseModal ]
+        [ div [ class "modal-content", stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
+            [ h2 [] [ text "Create New Database" ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Database Name" ]
+                , input 
+                    [ type_ "text"
+                    , placeholder "My New Database"
+                    , value model.newDatabaseName
+                    , onInput UpdateNewDatabaseName
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Description (optional)" ]
+                , textarea
+                    [ placeholder "Description of this database..."
+                    , value model.newDatabaseDescription
+                    , onInput UpdateNewDatabaseDescription
+                    , class "form-textarea"
+                    , Html.Attributes.rows 3
+                    ]
+                    []
+                ]
+            , div [ class "modal-actions" ]
+                [ button 
+                    [ onClick CreateDatabase
+                    , class "submit-button"
+                    , disabled (String.isEmpty model.newDatabaseName || model.loading)
+                    ] 
+                    [ text (if model.loading then "Creating..." else "Create") ]
+                , button 
+                    [ onClick HideCreateDatabaseModal
+                    , class "cancel-button"
+                    ] 
+                    [ text "Cancel" ]
+                ]
+            ]
         ]
 
 
@@ -908,6 +1132,23 @@ viewHeader : Model -> Html Msg
 viewHeader model =
     header [ class "app-header" ]
         [ h1 [] [ text "AI Search Tool" ]
+        , div [ class "database-info" ]
+            [ span [ class "database-label" ] [ text "Database: " ]
+            , span [ class "database-name" ] 
+                [ text (model.currentDatabase 
+                    |> Maybe.map .name 
+                    |> Maybe.withDefault "Loading...") 
+                ]
+            , button 
+                [ onClick (if model.showDatabaseMenu then HideDatabaseMenu else ShowDatabaseMenu)
+                , class "database-menu-button" 
+                ] 
+                [ text "▼" ]
+            , if model.showDatabaseMenu then
+                viewDatabaseMenu model
+              else
+                text ""
+            ]
         , nav []
             [ button [ onClick (ChangeView ListView), class "nav-button", title "Ctrl+L" ]
                 [ text "Documents"

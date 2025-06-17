@@ -142,3 +142,40 @@ openPDFNative config filename msg =
         , body = Http.jsonBody (encodeOpenPDF filename)
         , expect = Http.expectWhatever (always msg)
         }
+
+
+-- Database management
+
+
+getCurrentDatabase : Config -> (Result Http.Error DatabaseInfo -> msg) -> Cmd msg
+getCurrentDatabase config msg =
+    Http.get
+        { url = config.apiUrl ++ "/current-database"
+        , expect = Http.expectJson msg databaseInfoDecoder
+        }
+
+
+getDatabases : Config -> (Result Http.Error (List DatabaseInfo) -> msg) -> Cmd msg
+getDatabases config msg =
+    Http.get
+        { url = config.apiUrl ++ "/databases"
+        , expect = Http.expectJson msg (Decode.list databaseInfoDecoder)
+        }
+
+
+createDatabase : Config -> String -> Maybe String -> (Result Http.Error DatabaseInfo -> msg) -> Cmd msg
+createDatabase config name description msg =
+    Http.post
+        { url = config.apiUrl ++ "/databases"
+        , body = Http.jsonBody (encodeCreateDatabase name description)
+        , expect = Http.expectJson msg databaseInfoDecoder
+        }
+
+
+switchDatabase : Config -> String -> (Result Http.Error DatabaseInfo -> msg) -> Cmd msg
+switchDatabase config databaseId msg =
+    Http.post
+        { url = config.apiUrl ++ "/databases/" ++ databaseId ++ "/activate"
+        , body = Http.emptyBody
+        , expect = Http.expectJson msg databaseInfoDecoder
+        }

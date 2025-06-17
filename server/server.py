@@ -23,6 +23,7 @@ import json
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 import config
+from database_manager import get_database_manager, DatabaseInfo
 
 
 class DocumentRequest(BaseModel):
@@ -72,6 +73,25 @@ class OpenPDFRequest(BaseModel):
     filename: str
 
 
+class CreateDatabaseRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class UpdateDatabaseRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class DatabaseResponse(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    description: Optional[str] = None
+    document_count: int
+    last_accessed: str
+
+
 class DocumentResponse(BaseModel):
     id: str
     title: str
@@ -97,9 +117,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize database manager
+db_manager = get_database_manager()
+
 # Initialize document store once when server starts
 print("Loading document store and model...")
-document_store = DocumentStoreV2(storage_dir=str(config.STORAGE_DIR), load_model=True)
+document_store = DocumentStoreV2(load_model=True)
 print("Model loaded and ready!")
 
 # Initialize Anthropic client
@@ -1100,6 +1123,126 @@ def get_cluster_naming_stats():
         }
     }
     return stats
+
+
+# Database management endpoints
+
+@app.get("/current-database")
+async def get_current_database():
+    """Get information about the currently active database."""
+    try:
+        db = db_manager.get_current_database()
+        return DatabaseResponse(
+            id=db.id,
+            name=db.name,
+            created_at=db.created_at,
+            description=db.description,
+            document_count=db.document_count,
+            last_accessed=db.last_accessed
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/databases")
+async def list_databases():
+    """List all available databases."""
+    try:
+        databases = db_manager.list_databases()
+        return [
+            DatabaseResponse(
+                id=db.id,
+                name=db.name,
+                created_at=db.created_at,
+                description=db.description,
+                document_count=db.document_count,
+                last_accessed=db.last_accessed
+            )
+            for db in databases
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/databases")
+async def create_database(request: CreateDatabaseRequest):
+    """Create a new database."""
+    try:
+        new_db = db_manager.create_database(
+            name=request.name,
+            description=request.description
+        )
+        return DatabaseResponse(
+            id=new_db.id,
+            name=new_db.name,
+            created_at=new_db.created_at,
+            description=new_db.description,
+            document_count=new_db.document_count,
+            last_accessed=new_db.last_accessed
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/databases/{database_id}")
+async def update_database(database_id: str, request: UpdateDatabaseRequest):
+    """Update database metadata."""
+    try:
+        updated_db = db_manager.update_database(
+            database_id=database_id,
+            name=request.name,
+            description=request.description
+        )
+        return DatabaseResponse(
+            id=updated_db.id,
+            name=updated_db.name,
+            created_at=updated_db.created_at,
+            description=updated_db.description,
+            document_count=updated_db.document_count,
+            last_accessed=updated_db.last_accessed
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/databases/{database_id}")
+async def delete_database(database_id: str):
+    """Delete a database."""
+    try:
+        success = db_manager.delete_database(database_id)
+        return {"success": success}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/databases/{database_id}/activate")
+async def activate_database(database_id: str):
+    """Switch to a different database."""
+    global document_store
+    
+    try:
+        # Switch database in manager
+        db = db_manager.switch_database(database_id)
+        
+        # Reinitialize document store with new database
+        document_store = DocumentStoreV2(load_model=True, database_id=database_id)
+        
+        return DatabaseResponse(
+            id=db.id,
+            name=db.name,
+            created_at=db.created_at,
+            description=db.description,
+            document_count=db.document_count,
+            last_accessed=db.last_accessed
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

@@ -7,19 +7,34 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
 from models import Document, get_engine, get_session
+from database_manager import get_database_manager
+import config
 
 
 class DocumentStoreV2Optimized:
-    def __init__(self, storage_dir: str = "storage", load_model: bool = False):
-        self.storage_dir = storage_dir
-        os.makedirs(storage_dir, exist_ok=True)
+    def __init__(self, storage_dir: str = None, load_model: bool = False, database_id: str = None):
+        # Get database manager
+        self.db_manager = get_database_manager()
+        
+        # If database_id provided, switch to it
+        if database_id:
+            self.db_manager.switch_database(database_id)
+        
+        # Get current database info
+        current_db = self.db_manager.get_current_database()
+        
+        # Set config paths for current database
+        config.set_database_paths(current_db.id)
+        
+        # Use database-specific storage directory
+        self.storage_dir = str(self.db_manager.get_database_path())
         
         # Initialize SQLite
-        self.engine = get_engine(os.path.join(storage_dir, 'documents.db'))
+        self.engine = get_engine(str(config.DATABASE_PATH))
         
         # Initialize ChromaDB
         self.chroma_client = chromadb.PersistentClient(
-            path=os.path.join(storage_dir, 'chroma_db'),
+            path=str(config.CHROMA_DB_DIR),
             settings=Settings(anonymized_telemetry=False)
         )
         
@@ -83,6 +98,10 @@ class DocumentStoreV2Optimized:
             )
             
             session.commit()
+            
+            # Update document count in database manager
+            self.db_manager.update_document_count()
+            
             return doc_id
             
         except Exception as e:
@@ -171,6 +190,10 @@ class DocumentStoreV2Optimized:
             self.collection.delete(ids=[doc_id])
             
             session.commit()
+            
+            # Update document count in database manager
+            self.db_manager.update_document_count()
+            
             return True
             
         except Exception as e:
