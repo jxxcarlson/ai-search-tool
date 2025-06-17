@@ -221,6 +221,20 @@ lu list
 lu show 5
 ```
 
+### Data Export/Import
+
+The system includes tools for backing up and migrating your data:
+
+```bash
+# Export all data to a compressed archive
+python export_data.py
+
+# Import data from an archive
+python import_data.py exports/ai_search_tool_export_20240117_143022.tar.gz
+```
+
+See [DATA_EXPORT_IMPORT.md](DATA_EXPORT_IMPORT.md) for detailed instructions.
+
 ## Troubleshooting
 
 ### Common Issues
