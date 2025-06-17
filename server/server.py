@@ -22,6 +22,7 @@ from PIL import Image
 import json
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
+import config
 
 
 class DocumentRequest(BaseModel):
@@ -98,14 +99,13 @@ app.add_middleware(
 
 # Initialize document store once when server starts
 print("Loading document store and model...")
-document_store = DocumentStoreV2(load_model=True)
+document_store = DocumentStoreV2(storage_dir=str(config.STORAGE_DIR), load_model=True)
 print("Model loaded and ready!")
 
 # Initialize Anthropic client
 anthropic_client = None
-api_key = os.getenv("ANTHROPIC_API_KEY")
-if api_key:
-    anthropic_client = Anthropic(api_key=api_key)
+if config.ANTHROPIC_API_KEY:
+    anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
     print("Claude API initialized!")
 else:
     print("Warning: ANTHROPIC_API_KEY not found. Claude features will be disabled.")
@@ -376,17 +376,17 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Generate a unique filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{file.filename}"
-        pdf_path = f"storage/pdfs/{safe_filename}"
+        pdf_path = config.PDFS_DIR / safe_filename
         
         # Save the original PDF
-        with open(pdf_path, "wb") as pdf_file:
+        with open(str(pdf_path), "wb") as pdf_file:
             pdf_file.write(pdf_content)
         
         # Generate thumbnails
-        thumbnail_dir = "storage/pdf_thumbnails"
+        thumbnail_dir = config.PDF_THUMBNAILS_DIR
         os.makedirs(thumbnail_dir, exist_ok=True)
         filename_base = safe_filename.rsplit('.', 1)[0]
-        thumbnail_paths = generate_pdf_thumbnails(pdf_path, thumbnail_dir, filename_base)
+        thumbnail_paths = generate_pdf_thumbnails(str(pdf_path), str(thumbnail_dir), filename_base)
         
         # Create document with extracted text
         doc_id = document_store.add_document(
@@ -420,13 +420,13 @@ async def upload_pdf(file: UploadFile = File(...)):
 @app.get("/pdf/{filename}")
 async def get_pdf(filename: str):
     """Serve a PDF file for viewing"""
-    pdf_path = f"storage/pdfs/{filename}"
+    pdf_path = config.PDFS_DIR / filename
     
-    if not os.path.exists(pdf_path):
+    if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF not found")
     
     return FileResponse(
-        path=pdf_path,
+        path=str(pdf_path),
         media_type="application/pdf",
         filename=filename,
         headers={
@@ -439,13 +439,13 @@ async def get_pdf(filename: str):
 @app.get("/pdf/thumbnail/{filename}")
 async def get_pdf_thumbnail(filename: str):
     """Serve a PDF thumbnail image"""
-    thumb_path = f"storage/pdf_thumbnails/{filename}"
+    thumb_path = config.PDF_THUMBNAILS_DIR / filename
     
-    if not os.path.exists(thumb_path):
+    if not thumb_path.exists():
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     
     return FileResponse(
-        path=thumb_path,
+        path=str(thumb_path),
         media_type="image/jpeg",
         headers={
             "Cache-Control": "public, max-age=3600"
@@ -458,11 +458,11 @@ async def get_pdf_thumbnails(pdf_filename: str):
     """Get list of thumbnails for a PDF"""
     # Extract base filename
     base_name = pdf_filename.rsplit('.', 1)[0]
-    thumbnail_dir = "storage/pdf_thumbnails"
+    thumbnail_dir = config.PDF_THUMBNAILS_DIR
     
     thumbnails = []
-    if os.path.exists(thumbnail_dir):
-        for file in os.listdir(thumbnail_dir):
+    if thumbnail_dir.exists():
+        for file in os.listdir(str(thumbnail_dir)):
             if file.startswith(base_name) and file.endswith('.jpg'):
                 thumbnails.append(file)
     
@@ -473,22 +473,22 @@ async def get_pdf_thumbnails(pdf_filename: str):
 @app.post("/open-pdf-native")
 async def open_pdf_native(request: OpenPDFRequest):
     """Open a PDF file in the system's native PDF viewer"""
-    pdf_path = f"storage/pdfs/{request.filename}"
+    pdf_path = config.PDFS_DIR / request.filename
     
-    if not os.path.exists(pdf_path):
+    if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="PDF not found")
     
     try:
         system = platform.system()
         
         if system == "Darwin":  # macOS
-            subprocess.run(["open", pdf_path], check=True)
+            subprocess.run(["open", str(pdf_path)], check=True)
         elif system == "Windows":
-            os.startfile(pdf_path)
+            os.startfile(str(pdf_path))
         elif system == "Linux":
             # Try xdg-open first (works on most desktop environments)
             try:
-                subprocess.run(["xdg-open", pdf_path], check=True)
+                subprocess.run(["xdg-open", str(pdf_path)], check=True)
             except:
                 # Fallback to other common PDF viewers
                 for viewer in ["evince", "okular", "firefox", "chromium"]:

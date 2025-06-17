@@ -96,7 +96,7 @@ fi
 export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 # Set offline mode if no internet connection
 export HF_HUB_OFFLINE=1
-python -u server.py $API_PORT 2>&1 | tee api_server.log &
+cd server && python -u server.py $API_PORT 2>&1 | tee api_server.log &
 API_PID=$!
 
 # Wait for API server to start (give it more time for model loading)
@@ -113,9 +113,9 @@ done
 if ! lsof -i:$API_PORT > /dev/null 2>&1; then
     echo -e "${RED}API server failed to start!${NC}"
     echo -e "${YELLOW}Checking logs...${NC}"
-    if [ -f api_server.log ]; then
+    if [ -f server/api_server.log ]; then
         echo -e "${YELLOW}Last 10 lines of API server log:${NC}"
-        tail -10 api_server.log
+        tail -10 server/api_server.log
     fi
     
     # Check if process is still alive
