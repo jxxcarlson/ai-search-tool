@@ -1,40 +1,42 @@
 # AI Search Tool
 
-A semantic document search system that runs locally with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB. 
+A semantic document search system that runs locally with a web interface built in Elm and a Python backend using sentence transformers and ChromaDB.
 
-- Add documents manually to the a local document database (sqlite)
+## Easy installation (Mac)
+
+Run the dmg installer dist/AI-Search-Tool-1.0.0.dmg
+
+## Features
+
+- Add documents manually to the a local document database (sqlite): paste them into editor
 - Edit documents
-- Render text and markdown documents. 
+- Render documents written in plain text, markdown, scripta, or minilatex
 - Group document semantically
-- Now includes Claude AI integration for intelligent conversations that can be saved locally.
+- Claude AI integration: ask Claude something, save reply if you like it  Requires Claude API key.
+- Create and manage new databases
+- Export and import databaes
 
 # To do
 
-- Add rendering for Scripta and MiniLaTeX documents
+- _Documentation!_
 - File upload
 - Batch file upload
 - Add integration with other AI's
 
-# TODO
-
-- Add integration with other AI's
-
-## Installation
-
-### Prerequisites
+## Prerequisites
 
 - Python 3.8 or higher
 - Node.js and npm (for Elm)
 - Git
 
-### Step 1: Clone the Repository
+## Step 1: Clone the Repository
 
 ```bash
 git clone <repository-url>
 cd search-tool
 ```
 
-### Step 2: Set Up Python Environment
+## Step 2: Set Up Python Environment
 
 ```bash
 # Create a virtual environment
@@ -50,7 +52,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Step 3: Install Elm
+## Step 3: Install Elm
 
 ```bash
 # Install Elm globally
@@ -66,7 +68,7 @@ elm make src/Main.elm --output=main.js
 cd ..
 ```
 
-### Step 4: Set Up Claude Integration (Optional)
+## Step 4: Set Up Claude Integration (Optional)
 
 To enable the Claude AI integration:
 
@@ -77,7 +79,7 @@ export ANTHROPIC_API_KEY=your-api-key-here
 
 Note: The Claude integration is optional. The application will work without it, but the "Ask Claude" feature will not be available.
 
-### Step 5: Start the Services
+## Step 5: Start the Services
 
 **Option 1: Single Command Startup (Recommended)**
 
