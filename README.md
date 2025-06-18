@@ -12,7 +12,7 @@ This an experimental project built mostly with Claude. There is more work to do:
 ## Installation 
 
 - Easy way (mac): Run the dmg installer dist/AI-Search-Tool-1.0.0.dmg
-- Git: see INSTALLAION.md
+- Git: see INSTALLATION.md
 
 ## Features
 
