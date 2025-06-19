@@ -28,22 +28,13 @@ This an experimental project built mostly with Claude. There is more work to do:
 
 # Installation
 
-## Clone and setup
-git clone <repo-url> search-tool
-cd search-tool
-
-## Install Python dependencies
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-## Build Elm frontend
-cd elm-app
-elm make src/Main.elm --output=main.js
-cd ..
-
-#3 Start the app
-./start.sh
-
-The app opens automatically at http://localhost:8080
+- `git clone <repo-url> search-tool && cd search-tool`
+- `python3 -m venv venv`
+- `source venv/bin/activate`
+- `pip install -r requirements.txt`
+- `cd elm-app && elm make src/Main.elm --output=main.js && cd ..`
+- `./start.sh`
+  
+The app opens automatically at http://localhost:8080, Use ctrl-C
+to stop the app or use `./stop.sh`
 
