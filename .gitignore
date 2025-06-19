@@ -81,6 +81,7 @@ coverage.xml
 build/
 develop-eggs/
 dist/
+dmg/
 downloads/
 eggs/
 .eggs/
