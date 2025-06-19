@@ -9,11 +9,6 @@ This an experimental project built mostly with Claude. There is more work to do:
 - _Improve the documentation and get rid of unnecess ary stuff._
 - Whatever
 
-## Installation 
-
-- Easy way (mac): Run the dmg installer dist/AI-Search-Tool-1.0.0.dmg
-- Git: see INSTALLATION.md
-
 ## Features
 
 - Add documents manually to the a local document database (sqlite): paste them into editor
