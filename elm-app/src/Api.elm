@@ -37,11 +37,11 @@ getDocument config index msg =
         }
 
 
-addDocument : Config -> String -> String -> Maybe String -> String -> (Result Http.Error Document -> msg) -> Cmd msg
-addDocument config title content docType tags msg =
+addDocument : Config -> String -> String -> Maybe String -> String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
+addDocument config title content docType tags source msg =
     Http.post
         { url = config.apiUrl ++ "/documents"
-        , body = Http.jsonBody (encodeDocument title content docType tags)
+        , body = Http.jsonBody (encodeDocument title content docType tags source)
         , expect = Http.expectJson msg documentDecoder
         }
 
@@ -93,13 +93,13 @@ clearAllDocuments config msg =
         }
 
 
-updateDocument : Config -> String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
-updateDocument config docId title content docType tags msg =
+updateDocument : Config -> String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
+updateDocument config docId title content docType tags source msg =
     Http.request
         { method = "PUT"
         , headers = []
         , url = config.apiUrl ++ "/documents/" ++ docId
-        , body = Http.jsonBody (encodeUpdate title content docType tags Nothing Nothing)
+        , body = Http.jsonBody (encodeUpdate title content docType tags Nothing Nothing source)
         , expect = Http.expectJson msg documentDecoder
         , timeout = Nothing
         , tracker = Nothing
@@ -204,4 +204,17 @@ switchDatabase config databaseId msg =
         { url = config.apiUrl ++ "/databases/" ++ databaseId ++ "/activate"
         , body = Http.emptyBody
         , expect = Http.expectJson msg databaseInfoDecoder
+        }
+
+
+updateDatabase : Config -> String -> Maybe String -> Maybe String -> (Result Http.Error DatabaseInfo -> msg) -> Cmd msg
+updateDatabase config databaseId name description msg =
+    Http.request
+        { method = "PUT"
+        , headers = []
+        , url = config.apiUrl ++ "/databases/" ++ databaseId
+        , body = Http.jsonBody (encodeUpdateDatabase name description)
+        , expect = Http.expectJson msg databaseInfoDecoder
+        , timeout = Nothing
+        , tracker = Nothing
         }

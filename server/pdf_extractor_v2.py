@@ -131,6 +131,11 @@ class PDFExtractorV2:
                         r'^doi:',  # DOI
                         r'^http',  # URLs
                         r'^\d+$',  # Just numbers
+                        r'^.*\.dvi$',  # LaTeX DVI files
+                        r'^.*\.tex$',  # LaTeX source files
+                        r'^.*\.pdf$',  # PDF filenames
+                        r'^fm\.',  # Common LaTeX frontmatter files
+                        r'^[a-zA-Z0-9_-]+\.[a-zA-Z]{2,4}$',  # Any filename with extension
                     ]
                     
                     for pattern in invalid_patterns:

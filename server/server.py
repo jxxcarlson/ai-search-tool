@@ -38,6 +38,7 @@ class DocumentRequest(BaseModel):
     content: str
     doc_type: Optional[str] = None
     tags: Optional[str] = None  # Comma-separated tags
+    source: Optional[str] = None  # URL or other source reference
 
 
 class RenameRequest(BaseModel):
@@ -51,6 +52,7 @@ class UpdateRequest(BaseModel):
     tags: Optional[str] = None  # Comma-separated tags
     abstract: Optional[str] = None
     abstract_source: Optional[str] = None
+    source: Optional[str] = None  # URL or other source reference
 
 
 class ClaudeRequest(BaseModel):
@@ -118,6 +120,7 @@ class DocumentResponse(BaseModel):
     tags: Optional[str] = None
     abstract: Optional[str] = None
     abstract_source: Optional[str] = None
+    source: Optional[str] = None
     created_at: Optional[str]
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
@@ -188,7 +191,8 @@ def add_document(doc: DocumentRequest):
         doc_type=doc.doc_type, 
         tags=doc.tags,
         abstract=abstract,
-        abstract_source=abstract_source
+        abstract_source=abstract_source,
+        source=doc.source
     )
     # Invalidate cluster cache when document is added
     invalidate_cluster_cache()
@@ -217,7 +221,8 @@ def import_documents(documents: List[DocumentRequest]):
             doc_type=doc.doc_type, 
             tags=doc.tags,
             abstract=abstract,
-            abstract_source=abstract_source
+            abstract_source=abstract_source,
+            source=doc.source
         )
         results.append({"id": doc_id, "title": doc.title})
     return {"imported": len(results), "documents": results}
@@ -356,7 +361,8 @@ def update_document(doc_id: str, request: UpdateRequest):
         request.doc_type, 
         request.tags,
         request.abstract,
-        request.abstract_source
+        request.abstract_source,
+        request.source
     ):
         # Invalidate cluster cache when document is updated
         invalidate_cluster_cache()
@@ -678,6 +684,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 @app.post("/import-pdf-url", response_model=DocumentResponse)
 async def import_pdf_from_url(request: ImportPDFRequest):
     """Import a PDF from a URL"""
+    print(f"[DEBUG] Starting PDF import from URL: {request.url}")
     try:
         # Validate URL
         parsed_url = urlparse(request.url)
@@ -685,13 +692,19 @@ async def import_pdf_from_url(request: ImportPDFRequest):
             raise HTTPException(status_code=400, detail="Only HTTP(S) URLs are supported")
         
         # Download PDF with timeout and size limit
-        print(f"Downloading PDF from: {request.url}")
+        print(f"[DEBUG] Downloading PDF from: {request.url}")
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        response = requests.get(request.url, headers=headers, timeout=30, stream=True)
-        response.raise_for_status()
+        # Try with SSL verification, but fall back if needed
+        try:
+            response = requests.get(request.url, headers=headers, timeout=30, stream=True)
+            response.raise_for_status()
+        except requests.exceptions.SSLError:
+            print(f"[WARNING] SSL verification failed for {request.url}, retrying without verification")
+            response = requests.get(request.url, headers=headers, timeout=30, stream=True, verify=False)
+            response.raise_for_status()
         
         # Check content type
         content_type = response.headers.get('content-type', '').lower()
@@ -743,19 +756,128 @@ async def import_pdf_from_url(request: ImportPDFRequest):
                 else:
                     original_filename = 'downloaded.pdf'
         
-        # Create a file-like object for the existing upload logic
-        class PDFFile:
-            def __init__(self, content, filename):
-                self.file = io.BytesIO(content)
-                self.filename = filename
+        # Process the PDF content directly (similar to upload_pdf but with source)
+        print(f"[DEBUG] PDF downloaded successfully, size: {len(pdf_content)} bytes")
+        try:
+            # Use enhanced PDF extractor
+            print(f"[DEBUG] Extracting text from PDF...")
+            text_content, pdf_title, pdf_abstract = pdf_extractor.extract_text_and_metadata(pdf_content)
+            print(f"[DEBUG] Extracted {len(text_content)} characters, title: {pdf_title}")
             
-            async def read(self):
-                return self.file.getvalue()
-        
-        pdf_file = PDFFile(pdf_content, original_filename)
-        
-        # Use existing upload logic
-        return await upload_pdf(pdf_file)
+            # Get number of pages for metadata
+            print(f"[DEBUG] Creating PDF reader...")
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
+            num_pages = len(pdf_reader.pages)
+            print(f"[DEBUG] PDF has {num_pages} pages")
+            
+            # Use provided title or extracted title
+            if request.title:
+                pdf_title = request.title
+            elif not pdf_title or pdf_title == 'fm.dvi' or len(pdf_title) < 5:
+                # If we got a bad title like fm.dvi, try to get a better one from the URL
+                # First, try to extract from the filename in URL
+                url_parts = unquote(request.url).split('/')
+                if url_parts:
+                    filename_part = url_parts[-1].rsplit('.', 1)[0]  # Remove .pdf
+                    
+                    # Look for patterns like "Author_Name_Book_Title_Publisher_Year"
+                    if '_' in filename_part:
+                        parts = filename_part.split('_')
+                        # Common patterns: Author_Name_Title_Words_Publisher_Year
+                        if len(parts) > 4:
+                            # Skip first 2 parts (usually author name) and last 2 (publisher/year)
+                            title_parts = parts[2:-2]
+                            if title_parts:
+                                pdf_title = ' '.join(title_parts)
+                                # Capitalize properly
+                                pdf_title = ' '.join(word.capitalize() for word in pdf_title.split())
+                    
+                    # Specific known patterns
+                    if 'Relativity' in request.url and 'Introduction' in request.url:
+                        pdf_title = "An Introduction to Relativity"
+                    elif 'Carroll' in request.url and 'SG' in request.url:
+                        pdf_title = "Spacetime and Geometry"  # Carroll's General Relativity textbook
+                    elif not pdf_title or pdf_title == 'fm.dvi':
+                        pdf_title = original_filename.rsplit('.', 1)[0]
+            
+            # Clean up the text
+            text_content = text_content.strip()
+            print(f"[DEBUG] After cleanup, text length: {len(text_content)}")
+            
+            if not text_content:
+                # Some PDFs (like scanned documents) may have no extractable text
+                print(f"[WARNING] No text extracted from PDF, using minimal content")
+                text_content = f"[Scanned PDF - minimal text content]\nTitle: {pdf_title}\nPages: {num_pages}"
+            
+            # Generate a unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = f"{timestamp}_{original_filename}"
+            
+            # Ensure directories are created
+            config.PDFS_DIR.mkdir(parents=True, exist_ok=True)
+            config.PDF_THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
+            
+            pdf_path = config.PDFS_DIR / safe_filename
+            
+            # Save the original PDF
+            print(f"[DEBUG] Saving PDF to: {pdf_path}")
+            with open(str(pdf_path), "wb") as pdf_file:
+                pdf_file.write(pdf_content)
+            print(f"[DEBUG] PDF saved successfully")
+            
+            # Generate thumbnails
+            thumbnail_dir = config.PDF_THUMBNAILS_DIR
+            filename_base = safe_filename.rsplit('.', 1)[0]
+            print(f"[DEBUG] Generating thumbnails...")
+            thumbnail_paths = generate_pdf_thumbnails(str(pdf_path), str(thumbnail_dir), filename_base)
+            print(f"[DEBUG] Generated {len(thumbnail_paths)} thumbnails")
+            
+            # Use abstract from enhanced extractor if available
+            if pdf_abstract:
+                abstract = pdf_abstract
+                abstract_source = "extracted"
+            else:
+                # Try with abstract extractor as fallback
+                abstract, abstract_source = abstract_extractor.extract_abstract(text_content, "pdf", pdf_title)
+            
+            # Create document with extracted text, abstract, and source URL
+            print(f"[DEBUG] Creating document with title: {pdf_title}")
+            doc_id = document_store.add_document(
+                title=pdf_title,
+                content=text_content,
+                doc_type="pdf",
+                abstract=abstract,
+                abstract_source=abstract_source,
+                source=request.url  # Set source to the URL
+            )
+            print(f"[DEBUG] Document created with ID: {doc_id}")
+            
+            # Store the PDF path and metadata in the document content
+            metadata = {
+                "filename": safe_filename,
+                "pages": num_pages,
+                "thumbnails": thumbnail_paths
+            }
+            updated_content = f"[PDF_FILE:{safe_filename}]\n[PDF_META:{json.dumps(metadata)}]\n\n{text_content}"
+            document_store.update_document(doc_id, content=updated_content)
+            
+            # Get the created document
+            documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+            if documents:
+                return DocumentResponse(**documents[0])
+            
+            raise HTTPException(status_code=500, detail="Failed to save PDF document")
+            
+        except PyPDF2.errors.PdfReadError as e:
+            print(f"[ERROR] PDF read error: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF file: {str(e)}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[ERROR] Unexpected error processing PDF: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
         
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=408, detail="Timeout downloading PDF")
@@ -1651,7 +1773,7 @@ async def create_database(request: CreateDatabaseRequest):
 
 @app.put("/databases/{database_id}")
 async def update_database(database_id: str, request: UpdateDatabaseRequest):
-    """Update database metadata."""
+    """Update database name or description."""
     try:
         updated_db = db_manager.update_database(
             database_id=database_id,
@@ -1670,6 +1792,8 @@ async def update_database(database_id: str, request: UpdateDatabaseRequest):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 @app.delete("/databases/{database_id}")

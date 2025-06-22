@@ -16,6 +16,7 @@ class Document(Base):
     tags = Column(String, nullable=True)  # Comma-separated tags
     abstract = Column(Text, nullable=True)  # Document abstract/summary
     abstract_source = Column(String, nullable=True)  # 'extracted', 'ai_generated', 'manual', 'first_paragraph'
+    source = Column(String, nullable=True)  # URL or other source reference
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -28,6 +29,7 @@ class Document(Base):
             'tags': self.tags,
             'abstract': self.abstract,
             'abstract_source': self.abstract_source,
+            'source': self.source,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

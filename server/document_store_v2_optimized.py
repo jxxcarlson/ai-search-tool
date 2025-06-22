@@ -60,7 +60,7 @@ class DocumentStoreV2Optimized:
                 # If that fails, try normal loading (will download if needed)
                 self.model = SentenceTransformer('all-MiniLM-L12-v2')
     
-    def add_document(self, title: str, content: str, doc_type: Optional[str] = None, tags: Optional[str] = None, abstract: Optional[str] = None, abstract_source: Optional[str] = None) -> str:
+    def add_document(self, title: str, content: str, doc_type: Optional[str] = None, tags: Optional[str] = None, abstract: Optional[str] = None, abstract_source: Optional[str] = None, source: Optional[str] = None) -> str:
         """Add a new document to the store"""
         # Ensure model is loaded for embedding generation
         self._load_model()
@@ -79,7 +79,8 @@ class DocumentStoreV2Optimized:
                 doc_type=doc_type,
                 tags=tags,
                 abstract=abstract,
-                abstract_source=abstract_source
+                abstract_source=abstract_source,
+                source=source
             )
             session.add(document)
             
@@ -278,7 +279,7 @@ class DocumentStoreV2Optimized:
         finally:
             session.close()
     
-    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None, tags: str = None, abstract: str = None, abstract_source: str = None) -> bool:
+    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None, tags: str = None, abstract: str = None, abstract_source: str = None, source: str = None) -> bool:
         """Update a document's content and metadata"""
         session = get_session(self.engine)
         
@@ -301,6 +302,8 @@ class DocumentStoreV2Optimized:
                 document.abstract = abstract
             if abstract_source is not None:
                 document.abstract_source = abstract_source
+            if source is not None:
+                document.source = source
             
             session.commit()
             

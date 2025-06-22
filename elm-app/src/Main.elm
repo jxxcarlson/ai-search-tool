@@ -67,6 +67,10 @@ type alias Model =
     , pdfImportTitle : String
     , showAddDocumentMenu : Bool
     , clusterVisualization : Maybe ClusterVisualization
+    , showEditDatabaseModal : Bool
+    , editDatabaseId : Maybe String
+    , editDatabaseName : String
+    , editDatabaseDescription : String
     , showGraphWindow : Bool
     , graphWindowPosition : { x : Int, y : Int }
     , graphWindowSize : { width : Int, height : Int }
@@ -91,6 +95,7 @@ type alias NewDocument =
     , content : String
     , docType : DocType
     , tags : String
+    , source : String
     }
 
 
@@ -119,6 +124,7 @@ type alias EditingDocument =
     , content : String
     , docType : Maybe String
     , tags : String
+    , source : String
     }
 
 
@@ -148,6 +154,7 @@ type Msg
     | UpdateNewDocContent String
     | UpdateNewDocType String
     | UpdateNewDocTags String
+    | UpdateNewDocSource String
     | AddDocument
     | DocumentAdded (Result Http.Error Document)
     | LoadStats
@@ -162,6 +169,7 @@ type Msg
     | UpdateEditingContent String
     | UpdateEditingDocType String
     | UpdateEditingTags String
+    | UpdateEditingSource String
     | SaveEditingDocument
     | DocumentRenamed (Result Http.Error ())
     | DocumentUpdated (Result Http.Error Document)
@@ -209,6 +217,12 @@ type Msg
     | DatabaseCreated (Result Http.Error DatabaseInfo)
     | SwitchDatabase String
     | DatabaseSwitched (Result Http.Error DatabaseInfo)
+    | ShowEditDatabaseModal String
+    | HideEditDatabaseModal
+    | UpdateEditDatabaseName String
+    | UpdateEditDatabaseDescription String
+    | SaveDatabaseChanges
+    | DatabaseUpdated (Result Http.Error DatabaseInfo)
     | ToggleGraphWindow
     | CloseGraphWindow
     | StartDraggingGraphWindow Int Int
@@ -379,7 +393,7 @@ init flags =
       , loading = False
       , error = Nothing
       , view = ListView
-      , newDocument = NewDocument "" "" DTMarkDown ""
+      , newDocument = NewDocument "" "" DTMarkDown "" ""
       , stats = Nothing
       , editingDocument = Nothing
       , randomDocuments = []
@@ -406,6 +420,10 @@ init flags =
       , pdfImportTitle = ""
       , showAddDocumentMenu = False
       , clusterVisualization = Nothing
+      , showEditDatabaseModal = False
+      , editDatabaseId = Nothing
+      , editDatabaseName = ""
+      , editDatabaseDescription = ""
       , showGraphWindow = False
       , graphWindowPosition = { x = 100, y = 100 }
       , graphWindowSize = { width = 800, height = 600 }
@@ -546,6 +564,13 @@ update msg model =
             in
             ( { model | newDocument = { newDocument_ | tags = value } }, Cmd.none )
 
+        UpdateNewDocSource value ->
+            let
+                newDocument_ =
+                    model.newDocument
+            in
+            ( { model | newDocument = { newDocument_ | source = value } }, Cmd.none )
+
         AddDocument ->
             let
                 docType =
@@ -557,6 +582,7 @@ update msg model =
                 model.newDocument.content
                 docType
                 model.newDocument.tags
+                (if String.isEmpty model.newDocument.source then Nothing else Just model.newDocument.source)
                 DocumentAdded
             )
 
@@ -567,7 +593,7 @@ update msg model =
                         | loading = False
                         , error = Nothing
                         , view = ListView
-                        , newDocument = NewDocument "" "" DTMarkDown ""
+                        , newDocument = NewDocument "" "" DTMarkDown "" ""
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
@@ -616,7 +642,7 @@ update msg model =
             ( { model | randomDocuments = docs }, Cmd.none )
 
         StartEditingDocument doc ->
-            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType (Maybe.withDefault "" doc.tags)) }
+            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType (Maybe.withDefault "" doc.tags) (Maybe.withDefault "" doc.source)) }
             , Cmd.none
             )
 
@@ -685,6 +711,14 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        UpdateEditingSource source ->
+            case model.editingDocument of
+                Just editing ->
+                    ( { model | editingDocument = Just { editing | source = source } }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         SaveEditingDocument ->
             case model.editingDocument of
                 Just editing ->
@@ -695,6 +729,7 @@ update msg model =
                         (Just editing.content)
                         editing.docType
                         (Just editing.tags)
+                        (if String.isEmpty editing.source then Nothing else Just editing.source)
                         DocumentUpdated
                     )
 
@@ -937,7 +972,7 @@ update msg model =
 
         ShowPDFImportModal ->
             ( { model | showPDFImportModal = True, pdfImportURL = "", pdfImportTitle = "", showAddDocumentMenu = False }
-            , Cmd.none
+            , Task.attempt (\_ -> NoOp) (Browser.Dom.focus "pdf-import-url-input")
             )
 
         HidePDFImportModal ->
@@ -956,7 +991,7 @@ update msg model =
             )
 
         ImportPDFFromURL ->
-            if String.isEmpty model.pdfImportURL then
+            if String.isEmpty model.pdfImportURL || model.loading then
                 ( model, Cmd.none )
             else
                 ( { model | loading = True }
@@ -989,7 +1024,7 @@ update msg model =
             case key of
                 "n" ->
                     -- Ctrl+N: New Document
-                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "" }, showAddDocumentMenu = False }
+                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "", source = "" }, showAddDocumentMenu = False }
                     , Cmd.none
                     )
 
@@ -1204,6 +1239,96 @@ update msg model =
                     , Cmd.none
                     )
 
+        ShowEditDatabaseModal databaseId ->
+            case List.filter (\db -> db.id == databaseId) model.databases |> List.head of
+                Just database ->
+                    ( { model
+                        | showEditDatabaseModal = True
+                        , editDatabaseId = Just databaseId
+                        , editDatabaseName = database.name
+                        , editDatabaseDescription = Maybe.withDefault "" database.description
+                        , showDatabaseMenu = False
+                      }
+                    , Cmd.none
+                    )
+                    
+                Nothing ->
+                    ( model, Cmd.none )
+
+        HideEditDatabaseModal ->
+            ( { model
+                | showEditDatabaseModal = False
+                , editDatabaseId = Nothing
+                , editDatabaseName = ""
+                , editDatabaseDescription = ""
+              }
+            , Cmd.none
+            )
+
+        UpdateEditDatabaseName name ->
+            ( { model | editDatabaseName = name }
+            , Cmd.none
+            )
+
+        UpdateEditDatabaseDescription description ->
+            ( { model | editDatabaseDescription = description }
+            , Cmd.none
+            )
+
+        SaveDatabaseChanges ->
+            case model.editDatabaseId of
+                Just databaseId ->
+                    ( { model | loading = True }
+                    , Api.updateDatabase model.config 
+                        databaseId 
+                        (Just model.editDatabaseName)
+                        (if String.isEmpty model.editDatabaseDescription then Nothing else Just model.editDatabaseDescription)
+                        DatabaseUpdated
+                    )
+                    
+                Nothing ->
+                    ( model, Cmd.none )
+
+        DatabaseUpdated result ->
+            case result of
+                Ok database ->
+                    let
+                        updatedDatabases =
+                            List.map
+                                (\db ->
+                                    if db.id == database.id then
+                                        database
+                                    else
+                                        db
+                                )
+                                model.databases
+                                
+                        updatedCurrentDatabase =
+                            if Maybe.map .id model.currentDatabase == Just database.id then
+                                Just database
+                            else
+                                model.currentDatabase
+                    in
+                    ( { model
+                        | loading = False
+                        , showEditDatabaseModal = False
+                        , editDatabaseId = Nothing
+                        , editDatabaseName = ""
+                        , editDatabaseDescription = ""
+                        , databases = updatedDatabases
+                        , currentDatabase = updatedCurrentDatabase
+                      }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( { model
+                        | loading = False
+                        , error = Just "Failed to update database"
+                      }
+                    , Cmd.none
+                    )
+
         ToggleGraphWindow ->
             ( { model | showGraphWindow = not model.showGraphWindow }
             , if not model.showGraphWindow then
@@ -1339,6 +1464,11 @@ view model =
 
           else
             text ""
+        , if model.showEditDatabaseModal then
+            viewEditDatabaseModal model
+
+          else
+            text ""
         , if model.showMoveDocumentModal then
             viewMoveDocumentModal model
 
@@ -1387,10 +1517,21 @@ viewDatabaseMenuItem model database =
              else
                 "database-menu-item"
             )
-        , onClick (SwitchDatabase database.id)
         ]
-        [ span [ class "database-item-name" ] [ text database.name ]
-        , span [ class "database-item-count" ] [ text ("(" ++ String.fromInt database.documentCount ++ " docs)") ]
+        [ div
+            [ class "database-item-content"
+            , onClick (SwitchDatabase database.id)
+            ]
+            [ span [ class "database-item-name" ] [ text database.name ]
+            , span [ class "database-item-count" ] [ text ("(" ++ String.fromInt database.documentCount ++ " docs)") ]
+            ]
+        , button
+            [ class "database-item-edit"
+            , onClick (ShowEditDatabaseModal database.id)
+            , stopPropagationOn "click" (Decode.succeed (NoOp, True))
+            , title "Edit database name"
+            ]
+            [ text "✏️" ]
         ]
 
 
@@ -1437,6 +1578,57 @@ viewCreateDatabaseModal model =
                     ]
                 , button
                     [ onClick HideCreateDatabaseModal
+                    , class "cancel-button"
+                    ]
+                    [ text "Cancel" ]
+                ]
+            ]
+        ]
+
+
+viewEditDatabaseModal : Model -> Html Msg
+viewEditDatabaseModal model =
+    div [ class "modal-overlay", onClick HideEditDatabaseModal ]
+        [ div [ class "modal-content", stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
+            [ h2 [] [ text "Edit Database" ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Database Name" ]
+                , input
+                    [ type_ "text"
+                    , placeholder "Database Name"
+                    , value model.editDatabaseName
+                    , onInput UpdateEditDatabaseName
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Description (optional)" ]
+                , textarea
+                    [ placeholder "Description of this database..."
+                    , value model.editDatabaseDescription
+                    , onInput UpdateEditDatabaseDescription
+                    , class "form-textarea"
+                    , Html.Attributes.rows 3
+                    ]
+                    []
+                ]
+            , div [ class "modal-actions" ]
+                [ button
+                    [ onClick SaveDatabaseChanges
+                    , class "submit-button"
+                    , disabled (String.isEmpty model.editDatabaseName || model.loading)
+                    ]
+                    [ text
+                        (if model.loading then
+                            "Saving..."
+
+                         else
+                            "Save"
+                        )
+                    ]
+                , button
+                    [ onClick HideEditDatabaseModal
                     , class "cancel-button"
                     ]
                     [ text "Cancel" ]
@@ -1532,10 +1724,12 @@ viewPDFImportModal model =
                 [ label [] [ text "PDF URL:" ]
                 , input
                     [ type_ "url"
+                    , id "pdf-import-url-input"
                     , value model.pdfImportURL
                     , onInput UpdatePDFImportURL
                     , placeholder "https://example.com/document.pdf"
                     , class "form-input"
+                    , onEnter ImportPDFFromURL
                     ]
                     []
                 ]
@@ -1547,6 +1741,7 @@ viewPDFImportModal model =
                     , onInput UpdatePDFImportTitle
                     , placeholder "Leave empty to use filename or PDF title"
                     , class "form-input"
+                    , onEnter ImportPDFFromURL
                     ]
                     []
                 ]
@@ -1576,7 +1771,7 @@ viewPDFImportModal model =
 viewHeader : Model -> Html Msg
 viewHeader model =
     header [ class "app-header" ]
-        [ h1 [] [ text "AI Search Tool" ]
+        [ h1 [] [ text "SemanticSearch" ]
         , div [ class "database-info" ]
             [ span [ class "database-label" ] [ text "Database: " ]
             , span [ class "database-name" ]
@@ -1784,7 +1979,7 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, abstract = result.abstract, abstractSource = result.abstractSource, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
+    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, abstract = result.abstract, abstractSource = result.abstractSource, source = result.source, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
             [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
@@ -2073,6 +2268,21 @@ viewReadOnlyDocument model doc =
 
             Nothing ->
                 text ""
+        , case doc.source of
+            Just source ->
+                if String.isEmpty source then
+                    text ""
+                else
+                    div [ class "document-source" ]
+                        [ span [ class "source-label" ] [ text "Source: " ]
+                        , if String.startsWith "http://" source || String.startsWith "https://" source then
+                            a [ href source, target "_blank", class "source-link" ] [ text source ]
+                          else
+                            span [ class "source-text" ] [ text source ]
+                        ]
+
+            Nothing ->
+                text ""
         , div [ class "document-actions" ]
             (case doc.docType of
                 Just "pdf" ->
@@ -2249,6 +2459,17 @@ viewEditingDocument editing =
                         ]
                         []
                     ]
+                , div [ class "inline-tags-editor" ]
+                    [ label [] [ text "Source:" ]
+                    , input
+                        [ type_ "text"
+                        , value editing.source
+                        , onInput UpdateEditingSource
+                        , placeholder "e.g., https://example.com or Book Title"
+                        , class "inline-tags-input"
+                        ]
+                        []
+                    ]
                 ]
             , div [ class "document-actions" ]
                 [ button
@@ -2347,6 +2568,17 @@ viewAddDocument model =
                     , value model.newDocument.tags
                     , onInput UpdateNewDocTags
                     , placeholder "e.g., quantum physics, research, 2023"
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Source (URL or reference)" ]
+                , input
+                    [ type_ "text"
+                    , value model.newDocument.source
+                    , onInput UpdateNewDocSource
+                    , placeholder "e.g., https://example.com/article or Book Title, Page 123"
                     , class "form-input"
                     ]
                     []
