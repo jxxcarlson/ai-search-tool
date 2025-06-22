@@ -95,6 +95,13 @@ type alias ClusterVisualization =
     { clusters : List VisualizationCluster
     , documents : List VisualizationDocument
     , explainedVarianceRatio : List Float
+    , voronoiCells : List VoronoiCell
+    }
+
+
+type alias VoronoiCell =
+    { clusterId : Int
+    , vertices : List (Float, Float)
     }
 
 
@@ -308,6 +315,21 @@ clusterVisualizationDecoder =
         |> andMap (Decode.field "clusters" (Decode.list visualizationClusterDecoder))
         |> andMap (Decode.field "documents" (Decode.list visualizationDocumentDecoder))
         |> andMap (Decode.field "explained_variance_ratio" (Decode.list Decode.float))
+        |> andMap (Decode.field "voronoi_cells" (Decode.list voronoiCellDecoder))
+
+
+voronoiCellDecoder : Decoder VoronoiCell
+voronoiCellDecoder =
+    Decode.map2 VoronoiCell
+        (Decode.field "cluster_id" Decode.int)
+        (Decode.field "vertices" (Decode.list coordinateDecoder))
+
+
+coordinateDecoder : Decoder (Float, Float)
+coordinateDecoder =
+    Decode.map2 Tuple.pair
+        (Decode.index 0 Decode.float)
+        (Decode.index 1 Decode.float)
 
 
 visualizationClusterDecoder : Decoder VisualizationCluster

@@ -12,7 +12,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
 import Http
-import Svg exposing (svg, circle, line, g, text_)
+import Svg exposing (svg, circle, line, g, text_, path)
 import Svg.Attributes as SvgAttr
 import Svg.Events as SvgEvents
 import Json.Decode as Decode
@@ -67,7 +67,23 @@ type alias Model =
     , pdfImportTitle : String
     , showAddDocumentMenu : Bool
     , clusterVisualization : Maybe ClusterVisualization
+    , showGraphWindow : Bool
+    , graphWindowPosition : { x : Int, y : Int }
+    , graphWindowSize : { width : Int, height : Int }
+    , graphWindowDragging : Maybe { startX : Int, startY : Int, offsetX : Int, offsetY : Int }
+    , graphWindowResizing : Maybe { edge : ResizeEdge }
     }
+
+
+type ResizeEdge
+    = TopEdge
+    | RightEdge
+    | BottomEdge
+    | LeftEdge
+    | TopRightCorner
+    | BottomRightCorner
+    | BottomLeftCorner
+    | TopLeftCorner
 
 
 type alias NewDocument =
@@ -115,7 +131,6 @@ type View
     | RandomView
     | ClaudeView
     | ClustersView
-    | GraphView
 
 
 type Msg
@@ -194,6 +209,14 @@ type Msg
     | DatabaseCreated (Result Http.Error DatabaseInfo)
     | SwitchDatabase String
     | DatabaseSwitched (Result Http.Error DatabaseInfo)
+    | ToggleGraphWindow
+    | CloseGraphWindow
+    | StartDraggingGraphWindow Int Int
+    | DragGraphWindow Int Int
+    | StopDraggingGraphWindow
+    | StartResizingGraphWindow ResizeEdge Int Int
+    | ResizeGraphWindow Int Int
+    | StopResizingGraphWindow
 
 
 type DocType
@@ -383,6 +406,11 @@ init flags =
       , pdfImportTitle = ""
       , showAddDocumentMenu = False
       , clusterVisualization = Nothing
+      , showGraphWindow = False
+      , graphWindowPosition = { x = 100, y = 100 }
+      , graphWindowSize = { width = 800, height = 600 }
+      , graphWindowDragging = Nothing
+      , graphWindowResizing = Nothing
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -447,10 +475,7 @@ update msg model =
         ChangeView newView ->
             let
                 cmd = 
-                    if newView == GraphView then
-                        Api.getClusterVisualization model.config GotClusterVisualization
-                    else
-                        Cmd.none
+                    Cmd.none
             in
             ( { model | view = newView, justSavedClaude = False, showAddDocumentMenu = False }, cmd )
 
@@ -1005,8 +1030,8 @@ update msg model =
                     )
 
                 "g" ->
-                    -- Ctrl+G: Graph View
-                    ( { model | view = GraphView, clusterLoading = True }
+                    -- Ctrl+G: Graph Window
+                    ( { model | showGraphWindow = True, clusterLoading = True }
                     , Api.getClusterVisualization model.config GotClusterVisualization
                     )
 
@@ -1179,6 +1204,87 @@ update msg model =
                     , Cmd.none
                     )
 
+        ToggleGraphWindow ->
+            ( { model | showGraphWindow = not model.showGraphWindow }
+            , if not model.showGraphWindow then
+                Api.getClusterVisualization model.config GotClusterVisualization
+              else
+                Cmd.none
+            )
+
+        CloseGraphWindow ->
+            ( { model | showGraphWindow = False }
+            , Cmd.none
+            )
+
+        StartDraggingGraphWindow x y ->
+            ( { model 
+                | graphWindowDragging = Just 
+                    { startX = x
+                    , startY = y
+                    , offsetX = x - model.graphWindowPosition.x
+                    , offsetY = y - model.graphWindowPosition.y
+                    }
+              }
+            , Cmd.none
+            )
+
+        DragGraphWindow x y ->
+            case model.graphWindowDragging of
+                Just drag ->
+                    ( { model 
+                        | graphWindowPosition = 
+                            { x = x - drag.offsetX
+                            , y = y - drag.offsetY
+                            }
+                      }
+                    , Cmd.none
+                    )
+                Nothing ->
+                    ( model, Cmd.none )
+
+        StopDraggingGraphWindow ->
+            ( { model | graphWindowDragging = Nothing }
+            , Cmd.none
+            )
+
+        StartResizingGraphWindow edge x y ->
+            ( { model | graphWindowResizing = Just { edge = edge } }
+            , Cmd.none
+            )
+
+        ResizeGraphWindow x y ->
+            case model.graphWindowResizing of
+                Just { edge } ->
+                    let
+                        newSize = 
+                            case edge of
+                                RightEdge ->
+                                    { width = Basics.max 400 (x - model.graphWindowPosition.x)
+                                    , height = model.graphWindowSize.height
+                                    }
+                                BottomEdge ->
+                                    { width = model.graphWindowSize.width
+                                    , height = Basics.max 300 (y - model.graphWindowPosition.y)
+                                    }
+                                BottomRightCorner ->
+                                    { width = Basics.max 400 (x - model.graphWindowPosition.x)
+                                    , height = Basics.max 300 (y - model.graphWindowPosition.y)
+                                    }
+                                _ ->
+                                    model.graphWindowSize
+                    in
+                    ( { model | graphWindowSize = newSize }
+                    , Cmd.none
+                    )
+                Nothing ->
+                    ( model, Cmd.none )
+
+        StopResizingGraphWindow ->
+            ( { model | graphWindowResizing = Nothing }
+            , Cmd.none
+            )
+
 
 httpErrorToString : Http.Error -> String
 httpErrorToString error =
@@ -1228,9 +1334,6 @@ view model =
 
             ClustersView ->
                 viewClusters model
-
-            GraphView ->
-                viewGraph model
         , if model.showCreateDatabaseModal then
             viewCreateDatabaseModal model
 
@@ -1244,6 +1347,10 @@ view model =
         , if model.showPDFImportModal then
             viewPDFImportModal model
 
+          else
+            text ""
+        , if model.showGraphWindow then
+            viewGraphWindow model
           else
             text ""
         ]
@@ -1550,7 +1657,7 @@ viewHeader model =
             , button 
                 [ class "nav-button"
                 , title "Ctrl+G"
-                , onClick (ChangeView GraphView)
+                , onClick ToggleGraphWindow
                 ]
                 [ text "Graph"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+G)" ]
@@ -2313,7 +2420,7 @@ viewGraph model =
                         , SvgAttr.height "600"
                         , SvgAttr.style "background-color: #f9f9f9; border: 1px solid #e0e0e0;"
                         ]
-                        (viewProjectedVisualization scaleX scaleY visualization documentsByCluster)
+                        (viewProjectedVisualization scaleX scaleY visualization documentsByCluster svgWidth svgHeight)
                     , div [ class "graph-legend" ]
                         [ p [] [ text "• Small dots: Individual documents" ]
                         , p [] [ text "• Large dots: Cluster centroids (click to view cluster)" ]
@@ -2325,9 +2432,13 @@ viewGraph model =
         ]
 
 
-viewProjectedVisualization : (Float -> Float) -> (Float -> Float) -> ClusterVisualization -> Dict String (List VisualizationDocument) -> List (Svg.Svg Msg)
-viewProjectedVisualization scaleX scaleY visualization documentsByCluster =
+viewProjectedVisualization : (Float -> Float) -> (Float -> Float) -> ClusterVisualization -> Dict String (List VisualizationDocument) -> Float -> Float -> List (Svg.Svg Msg)
+viewProjectedVisualization scaleX scaleY visualization documentsByCluster svgWidth svgHeight =
     let
+        -- Draw Voronoi cells from server data
+        voronoiCells =
+            List.map (drawVoronoiCell scaleX scaleY) visualization.voronoiCells
+        
         -- Draw lines from documents to their cluster centers
         lines =
             List.concatMap
@@ -2397,7 +2508,38 @@ viewProjectedVisualization scaleX scaleY visualization documentsByCluster =
                 )
                 visualization.clusters
     in
-    lines ++ documentDots ++ clusterElements
+    voronoiCells ++ lines ++ documentDots ++ clusterElements
+
+
+drawVoronoiCell : (Float -> Float) -> (Float -> Float) -> VoronoiCell -> Svg.Svg Msg
+drawVoronoiCell scaleX scaleY cell =
+    let
+        -- Scale the vertices
+        scaledVertices =
+            List.map (\(x, y) -> (scaleX x, scaleY y)) cell.vertices
+        
+        -- Create path string for polygon
+        pathString =
+            case scaledVertices of
+                [] ->
+                    ""
+                    
+                first :: rest ->
+                    let
+                        moveTo = "M " ++ String.fromFloat (Tuple.first first) ++ " " ++ String.fromFloat (Tuple.second first)
+                        lineTo = List.map (\(x, y) -> "L " ++ String.fromFloat x ++ " " ++ String.fromFloat y) rest
+                        closePath = " Z"
+                    in
+                    moveTo ++ " " ++ String.join " " lineTo ++ closePath
+    in
+    Svg.path
+        [ SvgAttr.d pathString
+        , SvgAttr.fill "none"
+        , SvgAttr.stroke "red"
+        , SvgAttr.strokeWidth "0.5"
+        , SvgAttr.opacity "0.7"
+        ]
+        []
 
 
 abbreviateClusterName : String -> String
@@ -2413,6 +2555,150 @@ abbreviateClusterName name =
                 name
     in
     abbreviated
+
+
+viewGraphWindow : Model -> Html Msg
+viewGraphWindow model =
+    div
+        [ class "graph-window"
+        , style "position" "fixed"
+        , style "left" (String.fromInt model.graphWindowPosition.x ++ "px")
+        , style "top" (String.fromInt model.graphWindowPosition.y ++ "px")
+        , style "width" (String.fromInt model.graphWindowSize.width ++ "px")
+        , style "height" (String.fromInt model.graphWindowSize.height ++ "px")
+        , style "background-color" "white"
+        , style "border" "1px solid #ccc"
+        , style "box-shadow" "0 4px 8px rgba(0,0,0,0.2)"
+        , style "z-index" "1000"
+        , style "display" "flex"
+        , style "flex-direction" "column"
+        ]
+        [ -- Title bar
+          div
+            [ class "graph-window-titlebar"
+            , style "background-color" "#f0f0f0"
+            , style "padding" "8px"
+            , style "display" "flex"
+            , style "justify-content" "space-between"
+            , style "align-items" "center"
+            , style "cursor" "move"
+            , onMouseDown StartDraggingGraphWindow
+            ]
+            [ h3 [ style "margin" "0" ] [ text "Cluster Visualization" ]
+            , button
+                [ onClick CloseGraphWindow
+                , style "background" "none"
+                , style "border" "none"
+                , style "font-size" "18px"
+                , style "cursor" "pointer"
+                ]
+                [ text "×" ]
+            ]
+        , -- Content
+          div
+            [ style "flex" "1"
+            , style "overflow" "auto"
+            , style "padding" "10px"
+            ]
+            [ if model.clusterLoading then
+                div [ class "loading" ] [ text "Loading visualization..." ]
+              else
+                case model.clusterVisualization of
+                    Nothing ->
+                        div [ class "empty-state" ] [ text "No visualization data available" ]
+                        
+                    Just visualization ->
+                        viewGraphContent model visualization
+            ]
+        , -- Resize handle
+          div
+            [ class "resize-handle"
+            , style "position" "absolute"
+            , style "bottom" "0"
+            , style "right" "0"
+            , style "width" "15px"
+            , style "height" "15px"
+            , style "cursor" "nwse-resize"
+            , style "background" "linear-gradient(135deg, transparent 50%, #999 50%)"
+            , onMouseDown (StartResizingGraphWindow BottomRightCorner)
+            ]
+            []
+        ]
+
+
+viewGraphContent : Model -> ClusterVisualization -> Html Msg
+viewGraphContent model visualization =
+    let
+        -- Find bounds for scaling
+        allX = List.map .x visualization.documents ++ List.map .x visualization.clusters
+        allY = List.map .y visualization.documents ++ List.map .y visualization.clusters
+        
+        minX = Maybe.withDefault 0 (List.minimum allX)
+        maxX = Maybe.withDefault 1 (List.maximum allX)
+        minY = Maybe.withDefault 0 (List.minimum allY)
+        maxY = Maybe.withDefault 1 (List.maximum allY)
+        
+        -- Add padding
+        rangeX = maxX - minX
+        rangeY = maxY - minY
+        paddingFactor = 0.1
+        
+        viewMinX = minX - (rangeX * paddingFactor)
+        viewMaxX = maxX + (rangeX * paddingFactor)
+        viewMinY = minY - (rangeY * paddingFactor)
+        viewMaxY = maxY + (rangeY * paddingFactor)
+        
+        -- Scale to SVG coordinates
+        svgWidth = toFloat (model.graphWindowSize.width - 40)  -- Account for padding
+        svgHeight = toFloat (model.graphWindowSize.height - 120)  -- Account for title bar and padding
+        
+        scaleX x = ((x - viewMinX) / (viewMaxX - viewMinX)) * svgWidth
+        scaleY y = svgHeight - ((y - viewMinY) / (viewMaxY - viewMinY)) * svgHeight  -- Flip Y axis
+        
+        -- Group documents by cluster
+        documentsByCluster =
+            List.foldl
+                (\doc acc ->
+                    let
+                        key = String.fromInt doc.clusterId
+                        current = Maybe.withDefault [] (Dict.get key acc)
+                    in
+                    Dict.insert key (doc :: current) acc
+                )
+                Dict.empty
+                visualization.documents
+    in
+    div []
+        [ svg
+            [ SvgAttr.viewBox ("0 0 " ++ String.fromFloat svgWidth ++ " " ++ String.fromFloat svgHeight)
+            , SvgAttr.width "100%"
+            , SvgAttr.height (String.fromInt (model.graphWindowSize.height - 120) ++ "px")
+            , SvgAttr.style "background-color: #f9f9f9; border: 1px solid #e0e0e0;"
+            ]
+            (viewProjectedVisualization scaleX scaleY visualization documentsByCluster svgWidth svgHeight)
+        , div [ class "graph-legend", style "margin-top" "10px" ]
+            [ p [ style "margin" "5px 0", style "font-size" "12px" ] [ text "• Small dots: Individual documents" ]
+            , p [ style "margin" "5px 0", style "font-size" "12px" ] [ text "• Large dots: Cluster centroids (click to view cluster)" ]
+            , p [ style "margin" "5px 0", style "font-size" "12px" ] [ text ("• Explained variance: " ++ 
+                (String.join ", " (List.map (\v -> String.fromFloat (toFloat (round (v * 10000)) / 100) ++ "%") (List.take 2 visualization.explainedVarianceRatio))) ++ 
+                " (first two principal components)") ]
+            ]
+        ]
+
+
+onMouseDown : (Int -> Int -> msg) -> Attribute msg
+onMouseDown toMsg =
+    on "mousedown" (Decode.map2 toMsg pageX pageY)
+
+
+pageX : Decode.Decoder Int
+pageX =
+    Decode.field "pageX" Decode.int
+
+
+pageY : Decode.Decoder Int
+pageY =
+    Decode.field "pageY" Decode.int
 
 
 viewRandomDocuments : Model -> Html Msg
@@ -2882,10 +3168,22 @@ shuffleAndTake n list =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
         [ Browser.Events.onResize WindowResized
         , Browser.Events.onKeyDown keyDecoder
+        , if model.graphWindowDragging /= Nothing then
+            Sub.batch
+                [ Browser.Events.onMouseMove (Decode.map2 DragGraphWindow pageX pageY)
+                , Browser.Events.onMouseUp (Decode.succeed StopDraggingGraphWindow)
+                ]
+          else if model.graphWindowResizing /= Nothing then
+            Sub.batch
+                [ Browser.Events.onMouseMove (Decode.map2 ResizeGraphWindow pageX pageY)
+                , Browser.Events.onMouseUp (Decode.succeed StopResizingGraphWindow)
+                ]
+          else
+            Sub.none
         ]
 
 

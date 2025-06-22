@@ -11,6 +11,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 from sklearn.decomposition import PCA
+from scipy.spatial import Voronoi
 import time
 from collections import defaultdict
 import PyPDF2
@@ -1477,6 +1478,50 @@ def get_cluster_visualization():
         # Project centroids to 2D
         centroids_2d = pca.transform(centroids)
         
+        # Compute Voronoi tessellation
+        voronoi_cells = []
+        if len(centroids_2d) >= 4:  # Voronoi needs at least 4 points
+            try:
+                # Add far-away points to bound the Voronoi diagram
+                # This helps create finite regions for all centroids
+                min_x, max_x = centroids_2d[:, 0].min(), centroids_2d[:, 0].max()
+                min_y, max_y = centroids_2d[:, 1].min(), centroids_2d[:, 1].max()
+                
+                # Add padding
+                padding = max(max_x - min_x, max_y - min_y) * 2
+                
+                # Create extended points (centroids + bounding points)
+                bounding_points = np.array([
+                    [min_x - padding, min_y - padding],
+                    [max_x + padding, min_y - padding],
+                    [max_x + padding, max_y + padding],
+                    [min_x - padding, max_y + padding]
+                ])
+                
+                extended_points = np.vstack([centroids_2d, bounding_points])
+                
+                # Compute Voronoi
+                vor = Voronoi(extended_points)
+                
+                # Extract regions for each centroid (not the bounding points)
+                for i in range(len(centroids_2d)):
+                    region_index = vor.point_region[i]
+                    region = vor.regions[region_index]
+                    
+                    if -1 not in region and len(region) > 0:  # Valid finite region
+                        vertices = [vor.vertices[v] for v in region]
+                        
+                        # Convert to list of coordinate pairs
+                        polygon = [[float(v[0]), float(v[1])] for v in vertices]
+                        
+                        voronoi_cells.append({
+                            "cluster_id": int(unique_labels[i]) + 1,  # 1-based
+                            "vertices": polygon
+                        })
+            except Exception as e:
+                print(f"Voronoi computation failed: {e}")
+                # Continue without Voronoi cells
+        
         # Create response data
         documents = []
         for i, (id, metadata, coords) in enumerate(zip(ids, metadatas, embeddings_2d)):
@@ -1511,7 +1556,8 @@ def get_cluster_visualization():
         return {
             "clusters": clusters,
             "documents": documents,
-            "explained_variance_ratio": pca.explained_variance_ratio_.tolist()
+            "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
+            "voronoi_cells": voronoi_cells
         }
         
     except Exception as e:
