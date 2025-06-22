@@ -61,6 +61,7 @@ type alias Model =
     , showPDFImportModal : Bool
     , pdfImportURL : String
     , pdfImportTitle : String
+    , showAddDocumentMenu : Bool
     }
 
 
@@ -172,6 +173,7 @@ type Msg
     | PDFImported (Result Http.Error Document)
     | KeyPressed String
     | ToggleClusterExpansion Int
+    | ToggleAddDocumentMenu
     | NavigateToCluster Int
     | GotCurrentDatabase (Result Http.Error DatabaseInfo)
     | GotDatabases (Result Http.Error (List DatabaseInfo))
@@ -372,6 +374,7 @@ init flags =
       , showPDFImportModal = False
       , pdfImportURL = ""
       , pdfImportTitle = ""
+      , showAddDocumentMenu = False
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -434,7 +437,7 @@ update msg model =
             )
 
         ChangeView newView ->
-            ( { model | view = newView, justSavedClaude = False }, Cmd.none )
+            ( { model | view = newView, justSavedClaude = False, showAddDocumentMenu = False }, Cmd.none )
 
         DeleteDocument docId ->
             ( { model | loading = True }
@@ -852,7 +855,7 @@ update msg model =
                     )
 
         SelectPDFFile ->
-            ( model
+            ( { model | showAddDocumentMenu = False }
             , File.Select.file [ "application/pdf" ] PDFSelected
             )
 
@@ -893,7 +896,7 @@ update msg model =
             )
 
         ShowPDFImportModal ->
-            ( { model | showPDFImportModal = True, pdfImportURL = "", pdfImportTitle = "" }
+            ( { model | showPDFImportModal = True, pdfImportURL = "", pdfImportTitle = "", showAddDocumentMenu = False }
             , Cmd.none
             )
 
@@ -945,8 +948,20 @@ update msg model =
         KeyPressed key ->
             case key of
                 "n" ->
-                    -- Ctrl+N: Add Document
-                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "" } }
+                    -- Ctrl+N: New Document
+                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "" }, showAddDocumentMenu = False }
+                    , Cmd.none
+                    )
+
+                "u" ->
+                    -- Ctrl+U: Upload PDF
+                    ( { model | showAddDocumentMenu = False }
+                    , Task.perform (\_ -> SelectPDFFile) (Task.succeed ())
+                    )
+
+                "d" ->
+                    -- Ctrl+D: Download PDF from URL
+                    ( { model | showPDFImportModal = True, showAddDocumentMenu = False }
                     , Cmd.none
                     )
 
@@ -976,6 +991,11 @@ update msg model =
 
                 _ ->
                     ( model, Cmd.none )
+
+        ToggleAddDocumentMenu ->
+            ( { model | showAddDocumentMenu = not model.showAddDocumentMenu }
+            , Cmd.none
+            )
 
         ToggleClusterExpansion clusterId ->
             let
@@ -1439,9 +1459,39 @@ viewHeader model =
                 [ text "Documents"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+L)" ]
                 ]
-            , button [ onClick (ChangeView AddDocumentView), class "nav-button", title "Ctrl+N" ]
-                [ text "Add Document"
-                , span [ class "shortcut-hint" ] [ text " (Ctrl+N)" ]
+            , div [ class "add-document-menu" ]
+                [ button 
+                    [ onClick ToggleAddDocumentMenu
+                    , class "nav-button"
+                    , title "Add Document"
+                    ]
+                    [ text "Add Document ▼" ]
+                , if model.showAddDocumentMenu then
+                    div [ class "add-document-dropdown" ]
+                        [ button 
+                            [ onClick (ChangeView AddDocumentView)
+                            , class "add-document-dropdown-item"
+                            ]
+                            [ span [] [ text "New" ]
+                            , span [ class "shortcut" ] [ text "Ctrl+N" ]
+                            ]
+                        , button 
+                            [ onClick SelectPDFFile
+                            , class "add-document-dropdown-item"
+                            ]
+                            [ span [] [ text "Upload" ]
+                            , span [ class "shortcut" ] [ text "Ctrl+U" ]
+                            ]
+                        , button 
+                            [ onClick ShowPDFImportModal
+                            , class "add-document-dropdown-item"
+                            ]
+                            [ span [] [ text "Download" ]
+                            , span [ class "shortcut" ] [ text "Ctrl+D" ]
+                            ]
+                        ]
+                  else
+                    text ""
                 ]
             , button [ onClick (ChangeView ClaudeView), class "nav-button", title "Ctrl+C" ]
                 [ text "Ask Claude"
@@ -2112,104 +2162,44 @@ viewAddDocument : Model -> Html Msg
 viewAddDocument model =
     div [ class "add-document" ]
         [ h2 [] [ text "Add New Document" ]
-        , div [ class "form-tabs" ]
-            [ h3 [] [ text "Option 1: Add Text Document" ]
-            , div [ class "form" ]
-                [ div [ class "form-group" ]
-                    [ label [] [ text "Title" ]
-                    , input
-                        [ type_ "text"
-                        , value model.newDocument.title
-                        , onInput UpdateNewDocTitle
-                        , class "form-input"
-                        ]
-                        []
+        , div [ class "form" ]
+            [ div [ class "form-group" ]
+                [ label [] [ text "Title" ]
+                , input
+                    [ type_ "text"
+                    , value model.newDocument.title
+                    , onInput UpdateNewDocTitle
+                    , class "form-input"
                     ]
-                , div [ class "form-group" ]
-                    [ label [] [ text "Content" ]
-                    , textarea
-                        [ value model.newDocument.content
-                        , onInput UpdateNewDocContent
-                        , class "form-textarea"
-                        , rows 10
-                        ]
-                        []
-                    ]
-                , div [ class "form-group" ]
-                    [ label [] [ text "Document Type (optional)" ]
-                    , input
-                        [ type_ "text"
-                        , value (docTypeToString model.newDocument.docType)
-                        , onInput UpdateNewDocType
-                        , class "form-input"
-                        ]
-                        []
-                    ]
-                , div [ class "form-group" ]
-                    [ label [] [ text "Tags (comma-separated)" ]
-                    , input
-                        [ type_ "text"
-                        , value model.newDocument.tags
-                        , onInput UpdateNewDocTags
-                        , placeholder "e.g., quantum physics, research, 2023"
-                        , class "form-input"
-                        ]
-                        []
-                    ]
-                , button
-                    [ onClick AddDocument
-                    , class "submit-button"
-                    , disabled (String.isEmpty model.newDocument.title || String.isEmpty model.newDocument.content)
-                    ]
-                    [ text "Add Document" ]
+                    []
                 ]
-            , hr [ style "margin" "2rem 0" ] []
-            , h3 [] [ text "Option 2: Upload PDF" ]
-            , div [ class "pdf-upload-section" ]
-                [ case model.selectedPDF of
-                    Nothing ->
-                        button
-                            [ onClick SelectPDFFile
-                            , class "upload-button"
-                            ]
-                            [ text "Select PDF File" ]
-
-                    Just file ->
-                        div []
-                            [ p [ class "selected-file" ]
-                                [ text ("Selected: " ++ File.name file)
-                                ]
-                            , button
-                                [ onClick UploadPDF
-                                , class "submit-button"
-                                , disabled model.loading
-                                ]
-                                [ if model.loading then
-                                    text "Uploading..."
-
-                                  else
-                                    text "Upload PDF"
-                                ]
-                            , button
-                                [ onClick SelectPDFFile
-                                , class "cancel-button"
-                                ]
-                                [ text "Change File" ]
-                            ]
-                , p [ class "pdf-info" ]
-                    [ text "PDF files will be indexed for search but displayed read-only." ]
-                ]
-            , hr [ style "margin" "2rem 0" ] []
-            , h3 [] [ text "Option 3: Import PDF from URL" ]
-            , div [ class "pdf-import-section" ]
-                [ button
-                    [ onClick ShowPDFImportModal
-                    , class "upload-button"
+            , div [ class "form-group" ]
+                [ label [] [ text "Content" ]
+                , textarea
+                    [ value model.newDocument.content
+                    , onInput UpdateNewDocContent
+                    , class "form-textarea"
+                    , rows 10
                     ]
-                    [ text "Import PDF from URL" ]
-                , p [ class "pdf-info" ]
-                    [ text "Import PDFs directly from web URLs without downloading." ]
+                    []
                 ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Tags (comma-separated)" ]
+                , input
+                    [ type_ "text"
+                    , value model.newDocument.tags
+                    , onInput UpdateNewDocTags
+                    , placeholder "e.g., quantum physics, research, 2023"
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , button
+                [ onClick AddDocument
+                , class "submit-button"
+                , disabled (String.isEmpty model.newDocument.title || String.isEmpty model.newDocument.content)
+                ]
+                [ text "Add Document" ]
             ]
         ]
 
@@ -2701,6 +2691,12 @@ toKeyMsg key ctrlPressed =
         case String.toLower key of
             "n" ->
                 KeyPressed "n"
+
+            "u" ->
+                KeyPressed "u"
+
+            "d" ->
+                KeyPressed "d"
 
             "c" ->
                 KeyPressed "c"

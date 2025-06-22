@@ -42,9 +42,7 @@ class PDFExtractorV2:
         # Extract title from content if not in metadata
         title = title_from_metadata
         if not title:
-            print(f"DEBUG: No metadata title found, extracting from text")
-            print(f"DEBUG: First pages text length: {len(first_pages_text)}")
-            print(f"DEBUG: First 500 chars of first_pages_text: {repr(first_pages_text[:500])}")
+            # No metadata title found, extracting from text
             title = self._extract_title_from_text(first_pages_text)
         
         # Extract abstract
@@ -175,7 +173,7 @@ class PDFExtractorV2:
                 if match:
                     # Skip past the copyright notice
                     text_to_search = text[match.end():].strip()
-                    print(f"DEBUG: Skipped copyright notice, searching from position {match.end()}")
+                    # Skipped copyright notice
                     break
             
             # Try to find and skip past the arXiv header if present
@@ -220,8 +218,7 @@ class PDFExtractorV2:
             
             # If no arXiv header but we skipped copyright, try to extract title from the beginning
             elif text_to_search != text:
-                print(f"DEBUG: No arXiv header found, but copyright was skipped. Looking for title.")
-                print(f"DEBUG: Text after copyright (first 200 chars): {repr(text_to_search[:200])}")
+                # No arXiv header found, but copyright was skipped. Looking for title.
                 
                 # Handle titles that may have spaces within words
                 # First, try to fix common word splits
@@ -248,7 +245,7 @@ class PDFExtractorV2:
                         title = match.group(1).strip()
                         # Fix any remaining word splits
                         title = re.sub(r'\s+', ' ', title)
-                        print(f"DEBUG: Found title after copyright: {repr(title)}")
+                        # Found title after copyright
                         if 5 < len(title) < 200:
                             return title
             
@@ -364,7 +361,7 @@ class PDFExtractorV2:
                         line = re.sub(r'([a-z])\s+ing\b', r'\1ing', line)
                         line = re.sub(r'([a-z])\s+tion\b', r'\1tion', line)
                         line = re.sub(r'([a-z])\s+ed\b', r'\1ed', line)
-                        print(f"DEBUG: Extracted title from copyright line: {repr(line)}")
+                        # Extracted title from copyright line
                     else:
                         # Line skipped - copyright/permission notice
                         continue
