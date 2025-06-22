@@ -10,6 +10,7 @@ from datetime import datetime
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.decomposition import PCA
 import time
 from collections import defaultdict
 import PyPDF2
@@ -1423,6 +1424,101 @@ def get_document_clusters(request: ClusterRequest):
         print(f"Clustering error: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Clustering error: {str(e)}")
+
+
+@app.get("/cluster-visualization")
+def get_cluster_visualization():
+    """Get cluster data with 2D projections for visualization"""
+    try:
+        # First get the actual cluster assignments using the same logic as /clusters
+        cluster_request = ClusterRequest()
+        cluster_response = get_document_clusters(cluster_request)
+        
+        # Get all embeddings from the document store
+        all_data = document_store.collection.get(include=['embeddings', 'metadatas', 'documents'])
+        embeddings = np.array(all_data['embeddings'])
+        ids = all_data['ids']
+        metadatas = all_data['metadatas']
+        
+        if len(embeddings) < 2:
+            return {"clusters": [], "documents": []}
+        
+        # Clean and normalize embeddings
+        embeddings = np.nan_to_num(embeddings, nan=0.0, posinf=0.0, neginf=0.0)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1
+        embeddings = embeddings / norms
+        
+        # Perform PCA to reduce to 2D
+        pca = PCA(n_components=2)
+        embeddings_2d = pca.fit_transform(embeddings)
+        
+        # Create a mapping of document IDs to cluster IDs from the cluster response
+        doc_to_cluster = {}
+        cluster_info = {}
+        for cluster in cluster_response.clusters:
+            cluster_info[cluster["cluster_id"]] = cluster["cluster_name"]
+            for doc in cluster["documents"]:
+                doc_to_cluster[doc["id"]] = cluster["cluster_id"]
+        
+        # Assign cluster labels based on the actual clustering
+        labels = np.zeros(len(ids), dtype=int)
+        for i, doc_id in enumerate(ids):
+            if doc_id in doc_to_cluster:
+                labels[i] = doc_to_cluster[doc_id]
+        
+        # Compute centroids for visualization
+        unique_labels = np.unique(labels)
+        centroids = np.zeros((len(unique_labels), embeddings.shape[1]))
+        for i, label in enumerate(unique_labels):
+            cluster_mask = labels == label
+            centroids[i] = embeddings[cluster_mask].mean(axis=0)
+        
+        # Project centroids to 2D
+        centroids_2d = pca.transform(centroids)
+        
+        # Create response data
+        documents = []
+        for i, (id, metadata, coords) in enumerate(zip(ids, metadatas, embeddings_2d)):
+            cluster_id = int(labels[i])
+            documents.append({
+                "id": id,
+                "title": metadata.get("title", "Untitled"),
+                "cluster_id": cluster_id + 1,  # Convert to 1-based for display
+                "x": float(coords[0]),
+                "y": float(coords[1])
+            })
+        
+        clusters = []
+        for i, label in enumerate(unique_labels):
+            cluster_id = int(label)
+            cluster_name = cluster_info.get(cluster_id, f"Cluster {cluster_id}")
+            
+            # Find centroid index
+            centroid_idx = np.where(unique_labels == label)[0][0]
+            
+            # Count documents in this cluster
+            cluster_docs = [doc for doc in documents if doc["cluster_id"] == cluster_id + 1]
+            
+            clusters.append({
+                "cluster_id": cluster_id + 1,  # Convert to 1-based for display
+                "x": float(centroids_2d[centroid_idx][0]),
+                "y": float(centroids_2d[centroid_idx][1]),
+                "size": len(cluster_docs),
+                "name": cluster_name
+            })
+        
+        return {
+            "clusters": clusters,
+            "documents": documents,
+            "explained_variance_ratio": pca.explained_variance_ratio_.tolist()
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"Visualization error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Visualization error: {str(e)}")
 
 
 @app.get("/cluster-naming-stats")

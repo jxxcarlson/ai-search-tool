@@ -1165,3 +1165,40 @@
     line-height: 1.5;
     margin-top: 0.5rem;
 }
+/* Graph View Styles */
+.graph-view {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.graph-view h2 {
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+}
+
+.graph-container {
+    background-color: var(--bg-primary);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.graph-container svg {
+    display: block;
+    margin: 0 auto;
+    border-radius: 0.25rem;
+}
+
+.graph-legend {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.graph-legend p {
+    margin: 0.25rem 0;
+    color: var(--text-secondary);
+}

@@ -91,6 +91,31 @@ type alias DatabaseInfo =
     }
 
 
+type alias ClusterVisualization =
+    { clusters : List VisualizationCluster
+    , documents : List VisualizationDocument
+    , explainedVarianceRatio : List Float
+    }
+
+
+type alias VisualizationCluster =
+    { clusterId : Int
+    , x : Float
+    , y : Float
+    , size : Int
+    , name : String
+    }
+
+
+type alias VisualizationDocument =
+    { id : String
+    , title : String
+    , clusterId : Int
+    , x : Float
+    , y : Float
+    }
+
+
 
 documentDecoder : Decoder Document
 documentDecoder =
@@ -276,3 +301,30 @@ encodeCreateDatabase name description =
         [ ( "name", Encode.string name )
         , ( "description", encodeMaybe Encode.string description )
         ]
+
+clusterVisualizationDecoder : Decoder ClusterVisualization
+clusterVisualizationDecoder =
+    Decode.succeed ClusterVisualization
+        |> andMap (Decode.field "clusters" (Decode.list visualizationClusterDecoder))
+        |> andMap (Decode.field "documents" (Decode.list visualizationDocumentDecoder))
+        |> andMap (Decode.field "explained_variance_ratio" (Decode.list Decode.float))
+
+
+visualizationClusterDecoder : Decoder VisualizationCluster
+visualizationClusterDecoder =
+    Decode.succeed VisualizationCluster
+        |> andMap (Decode.field "cluster_id" Decode.int)
+        |> andMap (Decode.field "x" Decode.float)
+        |> andMap (Decode.field "y" Decode.float)
+        |> andMap (Decode.field "size" Decode.int)
+        |> andMap (Decode.field "name" Decode.string)
+
+
+visualizationDocumentDecoder : Decoder VisualizationDocument
+visualizationDocumentDecoder =
+    Decode.succeed VisualizationDocument
+        |> andMap (Decode.field "id" Decode.string)
+        |> andMap (Decode.field "title" Decode.string)
+        |> andMap (Decode.field "cluster_id" Decode.int)
+        |> andMap (Decode.field "x" Decode.float)
+        |> andMap (Decode.field "y" Decode.float)

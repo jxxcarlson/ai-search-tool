@@ -124,6 +124,14 @@ getClusters config numClusters msg =
         }
 
 
+getClusterVisualization : Config -> (Result Http.Error ClusterVisualization -> msg) -> Cmd msg
+getClusterVisualization config msg =
+    Http.get
+        { url = config.apiUrl ++ "/cluster-visualization"
+        , expect = Http.expectJson msg clusterVisualizationDecoder
+        }
+
+
 uploadPDF : Config -> File -> (Result Http.Error Document -> msg) -> Cmd msg
 uploadPDF config file msg =
     Http.post

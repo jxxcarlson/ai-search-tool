@@ -7,10 +7,14 @@ import Browser.Events
 import Element
 import File exposing (File)
 import File.Select
+import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
 import Http
+import Svg exposing (svg, circle, line, g, text_)
+import Svg.Attributes as SvgAttr
+import Svg.Events as SvgEvents
 import Json.Decode as Decode
 import Markdown.Html
 import Markdown.Parser
@@ -62,6 +66,7 @@ type alias Model =
     , pdfImportURL : String
     , pdfImportTitle : String
     , showAddDocumentMenu : Bool
+    , clusterVisualization : Maybe ClusterVisualization
     }
 
 
@@ -110,6 +115,7 @@ type View
     | RandomView
     | ClaudeView
     | ClustersView
+    | GraphView
 
 
 type Msg
@@ -175,6 +181,7 @@ type Msg
     | ToggleClusterExpansion Int
     | ToggleAddDocumentMenu
     | NavigateToCluster Int
+    | GotClusterVisualization (Result Http.Error ClusterVisualization)
     | GotCurrentDatabase (Result Http.Error DatabaseInfo)
     | GotDatabases (Result Http.Error (List DatabaseInfo))
     | ShowDatabaseMenu
@@ -375,6 +382,7 @@ init flags =
       , pdfImportURL = ""
       , pdfImportTitle = ""
       , showAddDocumentMenu = False
+      , clusterVisualization = Nothing
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -437,7 +445,14 @@ update msg model =
             )
 
         ChangeView newView ->
-            ( { model | view = newView, justSavedClaude = False, showAddDocumentMenu = False }, Cmd.none )
+            let
+                cmd = 
+                    if newView == GraphView then
+                        Api.getClusterVisualization model.config GotClusterVisualization
+                    else
+                        Cmd.none
+            in
+            ( { model | view = newView, justSavedClaude = False, showAddDocumentMenu = False }, cmd )
 
         DeleteDocument docId ->
             ( { model | loading = True }
@@ -989,6 +1004,12 @@ update msg model =
                     , Task.perform GotCurrentTime Time.now
                     )
 
+                "g" ->
+                    -- Ctrl+G: Graph View
+                    ( { model | view = GraphView, clusterLoading = True }
+                    , Api.getClusterVisualization model.config GotClusterVisualization
+                    )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -1019,6 +1040,24 @@ update msg model =
               }
             , Api.getClusters model.config Nothing GotClusters
             )
+
+        GotClusterVisualization result ->
+            case result of
+                Ok visualization ->
+                    ( { model 
+                        | clusterVisualization = Just visualization
+                        , clusterLoading = False 
+                      }
+                    , Cmd.none
+                    )
+                    
+                Err _ ->
+                    ( { model 
+                        | clusterLoading = False
+                        , error = Just "Failed to load cluster visualization"
+                      }
+                    , Cmd.none
+                    )
 
         GotCurrentDatabase result ->
             case result of
@@ -1189,6 +1228,9 @@ view model =
 
             ClustersView ->
                 viewClusters model
+
+            GraphView ->
+                viewGraph model
         , if model.showCreateDatabaseModal then
             viewCreateDatabaseModal model
 
@@ -1504,6 +1546,14 @@ viewHeader model =
             , button [ onClick LoadClusters, class "nav-button", title "Ctrl+K" ]
                 [ text "Clusters"
                 , span [ class "shortcut-hint" ] [ text " (Ctrl+K)" ]
+                ]
+            , button 
+                [ class "nav-button"
+                , title "Ctrl+G"
+                , onClick (ChangeView GraphView)
+                ]
+                [ text "Graph"
+                , span [ class "shortcut-hint" ] [ text " (Ctrl+G)" ]
                 ]
             , button [ onClick LoadStats, class "nav-button" ] [ text "Stats" ]
             ]
@@ -2204,6 +2254,167 @@ viewAddDocument model =
         ]
 
 
+viewGraph : Model -> Html Msg
+viewGraph model =
+    div [ class "graph-view" ]
+        [ h2 [] [ text "Cluster Graph" ]
+        , case model.clusterVisualization of
+            Nothing ->
+                if model.clusterLoading then
+                    div [ class "loading" ] [ text "Loading visualization..." ]
+                else
+                    div [ class "empty-state" ] [ text "No visualization data available" ]
+                    
+            Just visualization ->
+                let
+                    -- Find bounds for scaling
+                    allX = List.map .x visualization.documents ++ List.map .x visualization.clusters
+                    allY = List.map .y visualization.documents ++ List.map .y visualization.clusters
+                    
+                    minX = Maybe.withDefault 0 (List.minimum allX)
+                    maxX = Maybe.withDefault 1 (List.maximum allX)
+                    minY = Maybe.withDefault 0 (List.minimum allY)
+                    maxY = Maybe.withDefault 1 (List.maximum allY)
+                    
+                    -- Add padding
+                    rangeX = maxX - minX
+                    rangeY = maxY - minY
+                    paddingFactor = 0.1
+                    
+                    viewMinX = minX - (rangeX * paddingFactor)
+                    viewMaxX = maxX + (rangeX * paddingFactor)
+                    viewMinY = minY - (rangeY * paddingFactor)
+                    viewMaxY = maxY + (rangeY * paddingFactor)
+                    
+                    -- Scale to SVG coordinates
+                    svgWidth = 800
+                    svgHeight = 600
+                    
+                    scaleX x = ((x - viewMinX) / (viewMaxX - viewMinX)) * svgWidth
+                    scaleY y = svgHeight - ((y - viewMinY) / (viewMaxY - viewMinY)) * svgHeight  -- Flip Y axis
+                    
+                    -- Group documents by cluster
+                    documentsByCluster =
+                        List.foldl
+                            (\doc acc ->
+                                let
+                                    key = String.fromInt doc.clusterId
+                                    current = Maybe.withDefault [] (Dict.get key acc)
+                                in
+                                Dict.insert key (doc :: current) acc
+                            )
+                            Dict.empty
+                            visualization.documents
+                in
+                div [ class "graph-container" ]
+                    [ svg
+                        [ SvgAttr.viewBox ("0 0 " ++ String.fromFloat svgWidth ++ " " ++ String.fromFloat svgHeight)
+                        , SvgAttr.width "100%"
+                        , SvgAttr.height "600"
+                        , SvgAttr.style "background-color: #f9f9f9; border: 1px solid #e0e0e0;"
+                        ]
+                        (viewProjectedVisualization scaleX scaleY visualization documentsByCluster)
+                    , div [ class "graph-legend" ]
+                        [ p [] [ text "• Small dots: Individual documents" ]
+                        , p [] [ text "• Large dots: Cluster centroids (click to view cluster)" ]
+                        , p [] [ text ("• Explained variance: " ++ 
+                            (String.join ", " (List.map (\v -> String.fromFloat (toFloat (round (v * 10000)) / 100) ++ "%") (List.take 2 visualization.explainedVarianceRatio))) ++ 
+                            " (first two principal components)") ]
+                        ]
+                    ]
+        ]
+
+
+viewProjectedVisualization : (Float -> Float) -> (Float -> Float) -> ClusterVisualization -> Dict String (List VisualizationDocument) -> List (Svg.Svg Msg)
+viewProjectedVisualization scaleX scaleY visualization documentsByCluster =
+    let
+        -- Draw lines from documents to their cluster centers
+        lines =
+            List.concatMap
+                (\doc ->
+                    case List.filter (\c -> c.clusterId == doc.clusterId) visualization.clusters |> List.head of
+                        Just cluster ->
+                            [ line
+                                [ SvgAttr.x1 (String.fromFloat (scaleX doc.x))
+                                , SvgAttr.y1 (String.fromFloat (scaleY doc.y))
+                                , SvgAttr.x2 (String.fromFloat (scaleX cluster.x))
+                                , SvgAttr.y2 (String.fromFloat (scaleY cluster.y))
+                                , SvgAttr.stroke "#d0d0d0"
+                                , SvgAttr.strokeWidth "0.5"
+                                , SvgAttr.opacity "0.3"
+                                ]
+                                []
+                            ]
+                        Nothing ->
+                            []
+                )
+                visualization.documents
+        
+        -- Draw document dots
+        documentDots =
+            List.map
+                (\doc ->
+                    circle
+                        [ SvgAttr.cx (String.fromFloat (scaleX doc.x))
+                        , SvgAttr.cy (String.fromFloat (scaleY doc.y))
+                        , SvgAttr.r "3"
+                        , SvgAttr.fill "#6b7280"
+                        , SvgAttr.title doc.title
+                        , SvgAttr.opacity "0.7"
+                        ]
+                        []
+                )
+                visualization.documents
+        
+        -- Draw cluster centroids
+        clusterElements =
+            List.map
+                (\cluster ->
+                    g []
+                        [ -- Clickable cluster dot
+                          circle
+                            [ SvgAttr.cx (String.fromFloat (scaleX cluster.x))
+                            , SvgAttr.cy (String.fromFloat (scaleY cluster.y))
+                            , SvgAttr.r "6"
+                            , SvgAttr.fill "rgba(37, 99, 235, 0.2)"
+                            , SvgAttr.stroke "#2563eb"
+                            , SvgAttr.strokeWidth "2"
+                            , SvgAttr.cursor "pointer"
+                            , SvgEvents.onClick (NavigateToCluster (cluster.clusterId - 1))
+                            , SvgAttr.title ("Cluster " ++ String.fromInt cluster.clusterId ++ ": " ++ cluster.name ++ " (" ++ String.fromInt cluster.size ++ " docs)")
+                            ]
+                            []
+                        , -- Cluster label
+                          Svg.text_
+                            [ SvgAttr.x (String.fromFloat (scaleX cluster.x))
+                            , SvgAttr.y (String.fromFloat (scaleY cluster.y + 15))  -- Below the centroid
+                            , SvgAttr.textAnchor "middle"
+                            , SvgAttr.fontSize "10"
+                            , SvgAttr.fill "#1f2937"
+                            ]
+                            [ Svg.text (String.fromInt cluster.clusterId ++ ". " ++ abbreviateClusterName cluster.name) ]
+                        ]
+                )
+                visualization.clusters
+    in
+    lines ++ documentDots ++ clusterElements
+
+
+abbreviateClusterName : String -> String
+abbreviateClusterName name =
+    let
+        words = String.words name
+        abbreviated =
+            if List.length words > 3 then
+                String.join " " (List.take 2 words) ++ "..."
+            else if String.length name > 20 then
+                String.left 17 name ++ "..."
+            else
+                name
+    in
+    abbreviated
+
+
 viewRandomDocuments : Model -> Html Msg
 viewRandomDocuments model =
     div [ class "document-list" ]
@@ -2709,6 +2920,9 @@ toKeyMsg key ctrlPressed =
 
             "r" ->
                 KeyPressed "r"
+
+            "g" ->
+                KeyPressed "g"
 
             _ ->
                 NoOp
