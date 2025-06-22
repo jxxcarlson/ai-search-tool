@@ -42,6 +42,9 @@ class PDFExtractorV2:
         # Extract title from content if not in metadata
         title = title_from_metadata
         if not title:
+            print(f"DEBUG: No metadata title found, extracting from text")
+            print(f"DEBUG: First pages text length: {len(first_pages_text)}")
+            print(f"DEBUG: First 500 chars of first_pages_text: {repr(first_pages_text[:500])}")
             title = self._extract_title_from_text(first_pages_text)
         
         # Extract abstract
@@ -158,10 +161,27 @@ class PDFExtractorV2:
             # Look for common paper structure markers
             # PDF appears to be single line, attempting intelligent splitting
             
-            # First, let's try to find and skip past the arXiv header if present
+            # First, check if we have a copyright/attribution notice at the beginning
+            # Skip past common copyright/permission notices
+            copyright_patterns = [
+                r'^.*?(?:permission|copyright|attribution|reproduce).*?(?:solely for use in|grants permission).*?\.\s*',
+                r'^.*?(?:©|\(c\)|Copyright).*?\.\s*',
+                r'^Provided.*?works\.\s*',
+            ]
+            
+            text_to_search = text
+            for pattern in copyright_patterns:
+                match = re.match(pattern, text[:1000], re.IGNORECASE | re.DOTALL)
+                if match:
+                    # Skip past the copyright notice
+                    text_to_search = text[match.end():].strip()
+                    print(f"DEBUG: Skipped copyright notice, searching from position {match.end()}")
+                    break
+            
+            # Try to find and skip past the arXiv header if present
             # Handle cases where PDF extraction adds spaces within words
             arxiv_pattern = r'ar\s*X\s*iv\s*:\s*\d+\.\d+\s*v?\s*\d*\s*\[[^\]]+\]\s*\d+\s*\w+\s*\d{4}'
-            arxiv_match = re.search(arxiv_pattern, text[:500], re.IGNORECASE)
+            arxiv_match = re.search(arxiv_pattern, text_to_search[:500], re.IGNORECASE)
             
             if arxiv_match:
                 # Start looking for title after the arXiv header
@@ -197,6 +217,40 @@ class PDFExtractorV2:
                         if 10 < len(potential_title) < 200:
                             return potential_title
                     # Pattern did not match
+            
+            # If no arXiv header but we skipped copyright, try to extract title from the beginning
+            elif text_to_search != text:
+                print(f"DEBUG: No arXiv header found, but copyright was skipped. Looking for title.")
+                print(f"DEBUG: Text after copyright (first 200 chars): {repr(text_to_search[:200])}")
+                
+                # Handle titles that may have spaces within words
+                # First, try to fix common word splits
+                fixed_text = text_to_search[:500]
+                # Fix common split patterns like "Attenti on" -> "Attention"
+                fixed_text = re.sub(r'\b(\w+)\s+on\b', r'\1on', fixed_text)
+                fixed_text = re.sub(r'\b(\w+)\s+ing\b', r'\1ing', fixed_text)
+                fixed_text = re.sub(r'\b(\w+)\s+tion\b', r'\1tion', fixed_text)
+                fixed_text = re.sub(r'\b(\w+)\s+ment\b', r'\1ment', fixed_text)
+                
+                # Look for title patterns
+                title_patterns = [
+                    # Title ending with "Need" or similar keywords
+                    r'^([\w\s]+?(?:Need|Needs|Model|Models|Network|Networks|System|Systems|Method|Methods|Learning|Approach|Architecture|Mechanism|Attention|Transformer)s?)\s+(?=[A-Z][a-z]+|Abstract)',
+                    # Title before author names or abstract
+                    r'^([A-Z][\w\s]+?)\s+(?=[A-Z][a-z]+\s+[A-Z][a-z]+|Abstract)',
+                    # Simple title capture
+                    r'^([A-Z][\w\s]{5,100}?)(?=\s*[A-Z][a-z]+\s+[A-Z]|\s*Abstract)',
+                ]
+                
+                for pattern in title_patterns:
+                    match = re.match(pattern, fixed_text)
+                    if match:
+                        title = match.group(1).strip()
+                        # Fix any remaining word splits
+                        title = re.sub(r'\s+', ' ', title)
+                        print(f"DEBUG: Found title after copyright: {repr(title)}")
+                        if 5 < len(title) < 200:
+                            return title
             
             # Original patterns for non-arXiv papers
             patterns = [
@@ -295,7 +349,29 @@ class PDFExtractorV2:
                 'conference', 'journal', 'proceedings', 'volume', 'issue',
                 'copyright', 'license', 'arxiv', 'doi:', 'isbn', 'issn'
             ]
-            if any(word in line.lower() for word in skip_words):
+            # Special handling for lines that contain copyright but also the title
+            if 'permission' in line.lower() or 'reproduce' in line.lower():
+                # Check if this line also contains potential title keywords
+                if any(keyword in line.replace(' ', '') for keyword in ['Attention', 'Learning', 'Model', 'Network', 'System']):
+                    # This might be a copyright line followed by title, try to extract title part
+                    # Look for sentence ending followed by capital letter
+                    parts = re.split(r'\.\s+(?=[A-Z])', line)
+                    if len(parts) > 1:
+                        # Take the last part as potential title
+                        line = parts[-1]
+                        # Fix common word splits
+                        line = re.sub(r'([a-z])\s+on\b', r'\1on', line)
+                        line = re.sub(r'([a-z])\s+ing\b', r'\1ing', line)
+                        line = re.sub(r'([a-z])\s+tion\b', r'\1tion', line)
+                        line = re.sub(r'([a-z])\s+ed\b', r'\1ed', line)
+                        print(f"DEBUG: Extracted title from copyright line: {repr(line)}")
+                    else:
+                        # Line skipped - copyright/permission notice
+                        continue
+                else:
+                    # Line skipped - copyright/permission notice
+                    continue
+            elif any(word in line.lower() for word in skip_words):
                 # Line skipped by skip_words
                 continue
             
@@ -369,8 +445,10 @@ class PDFExtractorV2:
                 return title
             else:
                 # Title rejected due to length
+                pass
         else:
             # No potential title lines found
+            pass
         
         return None
     
