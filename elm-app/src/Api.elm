@@ -99,7 +99,7 @@ updateDocument config docId title content docType tags msg =
         { method = "PUT"
         , headers = []
         , url = config.apiUrl ++ "/documents/" ++ docId
-        , body = Http.jsonBody (encodeUpdate title content docType tags)
+        , body = Http.jsonBody (encodeUpdate title content docType tags Nothing Nothing)
         , expect = Http.expectJson msg documentDecoder
         , timeout = Nothing
         , tracker = Nothing
@@ -141,6 +141,24 @@ openPDFNative config filename msg =
         { url = config.apiUrl ++ "/open-pdf-native"
         , body = Http.jsonBody (encodeOpenPDF filename)
         , expect = Http.expectWhatever (always msg)
+        }
+
+
+importPDFFromURL : Config -> String -> Maybe String -> (Result Http.Error Document -> msg) -> Cmd msg
+importPDFFromURL config url title msg =
+    Http.post
+        { url = config.apiUrl ++ "/import-pdf-url"
+        , body = Http.jsonBody (encodeImportPDF url title)
+        , expect = Http.expectJson msg documentDecoder
+        }
+
+
+moveDocument : Config -> String -> String -> (Result Http.Error Document -> msg) -> Cmd msg
+moveDocument config docId targetDatabaseId msg =
+    Http.post
+        { url = config.apiUrl ++ "/documents/" ++ docId ++ "/move"
+        , body = Http.jsonBody (encodeMoveDocument targetDatabaseId)
+        , expect = Http.expectJson msg documentDecoder
         }
 
 

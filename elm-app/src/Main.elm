@@ -55,6 +55,12 @@ type alias Model =
     , showCreateDatabaseModal : Bool
     , newDatabaseName : String
     , newDatabaseDescription : String
+    , showMoveDocumentModal : Bool
+    , moveDocumentId : Maybe String
+    , moveTargetDatabaseId : Maybe String
+    , showPDFImportModal : Bool
+    , pdfImportURL : String
+    , pdfImportTitle : String
     }
 
 
@@ -147,12 +153,23 @@ type Msg
     | SelectDocumentFromCluster String
     | ScriptaDocument ScriptaV2.Msg.MarkupMsg
     | WindowResized Int Int
+    | ShowMoveDocumentModal String
+    | CancelMoveDocument
+    | SelectTargetDatabase String
+    | ConfirmMoveDocument
+    | DocumentMoved (Result Http.Error Document)
     | GotViewport Browser.Dom.Viewport
     | SelectPDFFile
     | PDFSelected File
     | PDFUploaded (Result Http.Error Document)
     | UploadPDF
     | OpenPDFNative String
+    | ShowPDFImportModal
+    | HidePDFImportModal
+    | UpdatePDFImportURL String
+    | UpdatePDFImportTitle String
+    | ImportPDFFromURL
+    | PDFImported (Result Http.Error Document)
     | KeyPressed String
     | ToggleClusterExpansion Int
     | NavigateToCluster Int
@@ -349,6 +366,12 @@ init flags =
       , showCreateDatabaseModal = False
       , newDatabaseName = ""
       , newDatabaseDescription = ""
+      , showMoveDocumentModal = False
+      , moveDocumentId = Nothing
+      , moveTargetDatabaseId = Nothing
+      , showPDFImportModal = False
+      , pdfImportURL = ""
+      , pdfImportTitle = ""
       }
     , Cmd.batch
         [ Api.getDocuments (Api.Config flags.apiUrl) GotDocuments
@@ -774,6 +797,60 @@ update msg model =
         GotViewport viewport ->
             ( { model | windowWidth = round viewport.viewport.width }, Cmd.none )
 
+        ShowMoveDocumentModal docId ->
+            ( { model
+                | showMoveDocumentModal = True
+                , moveDocumentId = Just docId
+                , moveTargetDatabaseId = Nothing
+              }
+            , Api.getDatabases model.config GotDatabases
+            )
+
+        CancelMoveDocument ->
+            ( { model
+                | showMoveDocumentModal = False
+                , moveDocumentId = Nothing
+                , moveTargetDatabaseId = Nothing
+              }
+            , Cmd.none
+            )
+
+        SelectTargetDatabase dbId ->
+            ( { model | moveTargetDatabaseId = Just dbId }, Cmd.none )
+
+        ConfirmMoveDocument ->
+            case ( model.moveDocumentId, model.moveTargetDatabaseId ) of
+                ( Just docId, Just targetDbId ) ->
+                    ( { model | loading = True }
+                    , Api.moveDocument model.config docId targetDbId DocumentMoved
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        DocumentMoved result ->
+            case result of
+                Ok movedDoc ->
+                    ( { model
+                        | loading = False
+                        , showMoveDocumentModal = False
+                        , moveDocumentId = Nothing
+                        , moveTargetDatabaseId = Nothing
+                        , documents = List.filter (\d -> d.id /= (model.moveDocumentId |> Maybe.withDefault "")) model.documents
+                        , selectedDocument = Nothing
+                        , view = ListView
+                      }
+                    , Cmd.none
+                    )
+
+                Err error ->
+                    ( { model
+                        | loading = False
+                        , error = Just (httpErrorToString error)
+                      }
+                    , Cmd.none
+                    )
+
         SelectPDFFile ->
             ( model
             , File.Select.file [ "application/pdf" ] PDFSelected
@@ -811,13 +888,59 @@ update msg model =
                     )
 
         OpenPDFNative filename ->
-            let
-                _ =
-                    Debug.log "OpenPDFNative called with filename" filename
-            in
             ( model
             , Api.openPDFNative model.config filename NoOp
             )
+
+        ShowPDFImportModal ->
+            ( { model | showPDFImportModal = True, pdfImportURL = "", pdfImportTitle = "" }
+            , Cmd.none
+            )
+
+        HidePDFImportModal ->
+            ( { model | showPDFImportModal = False }
+            , Cmd.none
+            )
+
+        UpdatePDFImportURL url ->
+            ( { model | pdfImportURL = url }
+            , Cmd.none
+            )
+
+        UpdatePDFImportTitle title ->
+            ( { model | pdfImportTitle = title }
+            , Cmd.none
+            )
+
+        ImportPDFFromURL ->
+            if String.isEmpty model.pdfImportURL then
+                ( model, Cmd.none )
+            else
+                ( { model | loading = True }
+                , Api.importPDFFromURL model.config model.pdfImportURL 
+                    (if String.isEmpty model.pdfImportTitle then Nothing else Just model.pdfImportTitle) 
+                    PDFImported
+                )
+
+        PDFImported result ->
+            case result of
+                Ok document ->
+                    ( { model
+                        | loading = False
+                        , error = Nothing
+                        , showPDFImportModal = False
+                        , pdfImportURL = ""
+                        , pdfImportTitle = ""
+                        , view = DocumentView
+                        , selectedDocument = Just document
+                      }
+                    , Api.getDocuments model.config GotDocuments
+                    )
+
+                Err error ->
+                    ( { model | loading = False, error = Just (httpErrorToString error) }
+                    , Cmd.none
+                    )
 
         KeyPressed key ->
             case key of
@@ -910,7 +1033,7 @@ update msg model =
             )
 
         ShowCreateDatabaseModal ->
-            ( { model 
+            ( { model
                 | showCreateDatabaseModal = True
                 , showDatabaseMenu = False
                 , newDatabaseName = ""
@@ -939,6 +1062,7 @@ update msg model =
                 description =
                     if String.isEmpty model.newDatabaseDescription then
                         Nothing
+
                     else
                         Just model.newDatabaseDescription
             in
@@ -949,7 +1073,7 @@ update msg model =
         DatabaseCreated result ->
             case result of
                 Ok database ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , showCreateDatabaseModal = False
                         , currentDatabase = Just database
@@ -962,7 +1086,7 @@ update msg model =
                     )
 
                 Err _ ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , error = Just "Failed to create database"
                       }
@@ -977,7 +1101,7 @@ update msg model =
         DatabaseSwitched result ->
             case result of
                 Ok database ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , currentDatabase = Just database
                         , showDatabaseMenu = False
@@ -989,7 +1113,7 @@ update msg model =
                     )
 
                 Err _ ->
-                    ( { model 
+                    ( { model
                         | loading = False
                         , error = Just "Failed to switch database"
                       }
@@ -1047,6 +1171,17 @@ view model =
                 viewClusters model
         , if model.showCreateDatabaseModal then
             viewCreateDatabaseModal model
+
+          else
+            text ""
+        , if model.showMoveDocumentModal then
+            viewMoveDocumentModal model
+
+          else
+            text ""
+        , if model.showPDFImportModal then
+            viewPDFImportModal model
+
           else
             text ""
         ]
@@ -1057,9 +1192,9 @@ viewDatabaseMenu model =
     div [ class "database-dropdown-menu" ]
         [ ul [ class "database-list" ]
             (List.map (viewDatabaseMenuItem model) model.databases
-                ++ [ li 
+                ++ [ li
                         [ class "database-menu-item create-new"
-                        , onClick ShowCreateDatabaseModal 
+                        , onClick ShowCreateDatabaseModal
                         ]
                         [ text "Create New Database..." ]
                    ]
@@ -1070,13 +1205,19 @@ viewDatabaseMenu model =
 viewDatabaseMenuItem : Model -> DatabaseInfo -> Html Msg
 viewDatabaseMenuItem model database =
     let
-        isActive = 
+        isActive =
             model.currentDatabase
                 |> Maybe.map (\db -> db.id == database.id)
                 |> Maybe.withDefault False
     in
-    li 
-        [ class (if isActive then "database-menu-item active" else "database-menu-item")
+    li
+        [ class
+            (if isActive then
+                "database-menu-item active"
+
+             else
+                "database-menu-item"
+            )
         , onClick (SwitchDatabase database.id)
         ]
         [ span [ class "database-item-name" ] [ text database.name ]
@@ -1091,7 +1232,7 @@ viewCreateDatabaseModal model =
             [ h2 [] [ text "Create New Database" ]
             , div [ class "form-group" ]
                 [ label [] [ text "Database Name" ]
-                , input 
+                , input
                     [ type_ "text"
                     , placeholder "My New Database"
                     , value model.newDatabaseName
@@ -1112,16 +1253,151 @@ viewCreateDatabaseModal model =
                     []
                 ]
             , div [ class "modal-actions" ]
-                [ button 
+                [ button
                     [ onClick CreateDatabase
                     , class "submit-button"
                     , disabled (String.isEmpty model.newDatabaseName || model.loading)
-                    ] 
-                    [ text (if model.loading then "Creating..." else "Create") ]
-                , button 
+                    ]
+                    [ text
+                        (if model.loading then
+                            "Creating..."
+
+                         else
+                            "Create"
+                        )
+                    ]
+                , button
                     [ onClick HideCreateDatabaseModal
                     , class "cancel-button"
-                    ] 
+                    ]
+                    [ text "Cancel" ]
+                ]
+            ]
+        ]
+
+
+viewMoveDocumentModal : Model -> Html Msg
+viewMoveDocumentModal model =
+    let
+        currentDbId =
+            model.currentDatabase
+                |> Maybe.map .id
+                |> Maybe.withDefault ""
+
+        otherDatabases =
+            model.databases
+                |> List.filter (\db -> db.id /= currentDbId)
+    in
+    div [ class "modal-overlay", onClick CancelMoveDocument ]
+        [ div [ class "modal-content", stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
+            [ h2 [] [ text "Move Document to Another Database" ]
+            , if List.isEmpty otherDatabases then
+                div [ class "info-message" ]
+                    [ text "No other databases available. Create a new database first." ]
+
+              else
+                div []
+                    [ div [ class "form-group" ]
+                        [ label [] [ text "Select Target Database:" ]
+                        , div [ class "database-list" ]
+                            (otherDatabases
+                                |> List.map
+                                    (\db ->
+                                        div
+                                            [ class
+                                                (if Just db.id == model.moveTargetDatabaseId then
+                                                    "database-menu-item active"
+
+                                                 else
+                                                    "database-menu-item"
+                                                )
+                                            , onClick (SelectTargetDatabase db.id)
+                                            , Html.Attributes.style "cursor" "pointer"
+                                            , Html.Attributes.style "padding" "0.5rem"
+                                            , Html.Attributes.style "border" "1px solid #ddd"
+                                            , Html.Attributes.style "margin" "0.25rem 0"
+                                            , Html.Attributes.style "border-radius" "4px"
+                                            ]
+                                            [ div [ class "database-item-name" ] [ text db.name ]
+                                            , div [ class "database-item-count" ]
+                                                [ text (String.fromInt db.documentCount ++ " documents") ]
+                                            ]
+                                    )
+                            )
+                        ]
+                    ]
+            , div [ class "modal-actions" ]
+                [ if not (List.isEmpty otherDatabases) then
+                    button
+                        [ onClick ConfirmMoveDocument
+                        , class "submit-button"
+                        , disabled (model.moveTargetDatabaseId == Nothing || model.loading)
+                        ]
+                        [ text
+                            (if model.loading then
+                                "Moving..."
+
+                             else
+                                "Move Document"
+                            )
+                        ]
+
+                  else
+                    text ""
+                , button
+                    [ onClick CancelMoveDocument
+                    , class "cancel-button"
+                    ]
+                    [ text "Cancel" ]
+                ]
+            ]
+        ]
+
+
+viewPDFImportModal : Model -> Html Msg
+viewPDFImportModal model =
+    div [ class "modal-overlay", onClick HidePDFImportModal ]
+        [ div [ class "modal-content", stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
+            [ h2 [] [ text "Import PDF from URL" ]
+            , div [ class "form-group" ]
+                [ label [] [ text "PDF URL:" ]
+                , input
+                    [ type_ "url"
+                    , value model.pdfImportURL
+                    , onInput UpdatePDFImportURL
+                    , placeholder "https://example.com/document.pdf"
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Title (optional):" ]
+                , input
+                    [ type_ "text"
+                    , value model.pdfImportTitle
+                    , onInput UpdatePDFImportTitle
+                    , placeholder "Leave empty to use filename or PDF title"
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "modal-actions" ]
+                [ button
+                    [ onClick ImportPDFFromURL
+                    , class "submit-button"
+                    , disabled (String.isEmpty model.pdfImportURL || model.loading)
+                    ]
+                    [ text
+                        (if model.loading then
+                            "Importing..."
+                         else
+                            "Import PDF"
+                        )
+                    ]
+                , button
+                    [ onClick HidePDFImportModal
+                    , class "cancel-button"
+                    ]
                     [ text "Cancel" ]
                 ]
             ]
@@ -1134,18 +1410,27 @@ viewHeader model =
         [ h1 [] [ text "AI Search Tool" ]
         , div [ class "database-info" ]
             [ span [ class "database-label" ] [ text "Database: " ]
-            , span [ class "database-name" ] 
-                [ text (model.currentDatabase 
-                    |> Maybe.map .name 
-                    |> Maybe.withDefault "Loading...") 
+            , span [ class "database-name" ]
+                [ text
+                    (model.currentDatabase
+                        |> Maybe.map .name
+                        |> Maybe.withDefault "Loading..."
+                    )
                 ]
-            , button 
-                [ onClick (if model.showDatabaseMenu then HideDatabaseMenu else ShowDatabaseMenu)
-                , class "database-menu-button" 
-                ] 
+            , button
+                [ onClick
+                    (if model.showDatabaseMenu then
+                        HideDatabaseMenu
+
+                     else
+                        ShowDatabaseMenu
+                    )
+                , class "database-menu-button"
+                ]
                 [ text "▼" ]
             , if model.showDatabaseMenu then
                 viewDatabaseMenu model
+
               else
                 text ""
             ]
@@ -1265,7 +1550,12 @@ viewDocumentCard doc =
 
             Nothing ->
                 text ""
-        , div [ class "content-preview" ] [ text (truncate 150 doc.content) ]
+        , case doc.abstract of
+            Just abstract ->
+                div [ class "abstract-preview" ] [ text (truncate 150 abstract) ]
+            
+            Nothing ->
+                div [ class "content-preview" ] [ text (truncate 150 doc.content) ]
         ]
 
 
@@ -1287,7 +1577,7 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
+    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, abstract = result.abstract, abstractSource = result.abstractSource, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
             [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
@@ -1324,7 +1614,12 @@ viewSearchResult result =
 
             Nothing ->
                 text ""
-        , div [ class "snippet" ] [ text (truncate 150 result.content) ]
+        , case result.abstract of
+            Just abstract ->
+                div [ class "abstract-preview" ] [ text (truncate 200 abstract) ]
+            
+            Nothing ->
+                div [ class "snippet" ] [ text (truncate 150 result.content) ]
         ]
 
 
@@ -1523,6 +1818,19 @@ viewReadOnlyDocument model doc =
                 Nothing ->
                     text ""
             ]
+        , case doc.abstract of
+            Just abstract ->
+                div [ class "document-abstract" ]
+                    [ h3 [ class "abstract-title" ] [ text "Abstract" ]
+                    , p [ class "abstract-text" ] [ text abstract ]
+                    , case doc.abstractSource of
+                        Just source ->
+                            span [ class "abstract-source" ] [ text ("Source: " ++ abstractSourceLabel source) ]
+                        Nothing ->
+                            text ""
+                    ]
+            Nothing ->
+                text ""
         , case doc.clusterName of
             Just clusterName ->
                 case doc.clusterId of
@@ -1562,19 +1870,22 @@ viewReadOnlyDocument model doc =
             (case doc.docType of
                 Just "pdf" ->
                     [ button [ onClick (OpenPDFNative (extractPDFFilename doc.content)), class "open-button" ] [ text "Open PDF" ]
-                    , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
+                    , button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
+                    , button [ onClick (ShowMoveDocumentModal doc.id), class "edit-button" ] [ text "Move" ]
                     , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
                     ]
 
                 _ ->
                     if String.startsWith "[PDF_FILE:" doc.content then
                         [ button [ onClick (OpenPDFNative (extractPDFFilename doc.content)), class "open-button" ] [ text "Open PDF" ]
-                        , button [ onClick (StartEditingDocument doc), class "edit-button", disabled True ] [ text "Edit" ]
+                        , button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
+                        , button [ onClick (ShowMoveDocumentModal doc.id), class "edit-button" ] [ text "Move" ]
                         , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
                         ]
 
                     else
                         [ button [ onClick (StartEditingDocument doc), class "edit-button" ] [ text "Edit" ]
+                        , button [ onClick (ShowMoveDocumentModal doc.id), class "edit-button" ] [ text "Move" ]
                         , button [ onClick (DeleteDocument doc.id), class "delete-button" ] [ text "Delete" ]
                         ]
             )
@@ -1736,7 +2047,7 @@ viewEditingDocument editing =
                 [ button
                     [ onClick SaveEditingDocument
                     , class "save-button"
-                    , disabled (String.isEmpty editing.title || String.isEmpty editing.content)
+                    , disabled (String.isEmpty editing.title)
                     ]
                     [ text "Save" ]
                 , button
@@ -1759,13 +2070,29 @@ viewEditingDocument editing =
                 ]
             , div [ class "form-group" ]
                 [ label [] [ text "Content" ]
-                , textarea
-                    [ value editing.content
-                    , onInput UpdateEditingContent
-                    , class "form-textarea"
-                    , rows 15
-                    ]
-                    []
+                , if editing.docType == Just "pdf" || String.startsWith "[PDF_FILE:" editing.content then
+                    div []
+                        [ textarea
+                            [ value editing.content
+                            , class "form-textarea"
+                            , rows 15
+                            , disabled True
+                            , Html.Attributes.style "background-color" "#f5f5f5"
+                            , Html.Attributes.style "cursor" "not-allowed"
+                            ]
+                            []
+                        , p [ Html.Attributes.style "color" "#666", Html.Attributes.style "font-size" "0.875rem", Html.Attributes.style "margin-top" "0.5rem" ]
+                            [ text "PDF content cannot be edited. You can only change the title and tags." ]
+                        ]
+
+                  else
+                    textarea
+                        [ value editing.content
+                        , onInput UpdateEditingContent
+                        , class "form-textarea"
+                        , rows 15
+                        ]
+                        []
                 ]
             , div [ class "form-group" ]
                 [ label [] [ text "Document Type (optional)" ]
@@ -1871,6 +2198,17 @@ viewAddDocument model =
                             ]
                 , p [ class "pdf-info" ]
                     [ text "PDF files will be indexed for search but displayed read-only." ]
+                ]
+            , hr [ style "margin" "2rem 0" ] []
+            , h3 [] [ text "Option 3: Import PDF from URL" ]
+            , div [ class "pdf-import-section" ]
+                [ button
+                    [ onClick ShowPDFImportModal
+                    , class "upload-button"
+                    ]
+                    [ text "Import PDF from URL" ]
+                , p [ class "pdf-info" ]
+                    [ text "Import PDFs directly from web URLs without downloading." ]
                 ]
             ]
         ]
@@ -1996,6 +2334,25 @@ formatDate maybeDate =
 
         Nothing ->
             "Unknown"
+
+
+abstractSourceLabel : String -> String
+abstractSourceLabel source =
+    case source of
+        "extracted" ->
+            "Extracted from document"
+        
+        "ai_generated" ->
+            "AI generated"
+        
+        "manual" ->
+            "Manually entered"
+        
+        "first_paragraph" ->
+            "First paragraph"
+        
+        _ ->
+            source
 
 
 formatDateTime : String -> String
@@ -2200,9 +2557,6 @@ viewClusters model =
 viewClusterCollapsible : Model -> Int -> Cluster -> Html Msg
 viewClusterCollapsible model index cluster =
     let
-        _ =
-            Debug.log "Rendering cluster" ( cluster.clusterName, index )
-
         isExpanded =
             List.member cluster.clusterId model.expandedClusters
 

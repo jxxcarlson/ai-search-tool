@@ -55,12 +55,12 @@ class DocumentStoreV2Optimized:
         if self.model is None:
             # Try to load with local_files_only first to avoid network issues
             try:
-                self.model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+                self.model = SentenceTransformer('all-MiniLM-L12-v2', local_files_only=True)
             except:
                 # If that fails, try normal loading (will download if needed)
-                self.model = SentenceTransformer('all-MiniLM-L6-v2')
+                self.model = SentenceTransformer('all-MiniLM-L12-v2')
     
-    def add_document(self, title: str, content: str, doc_type: Optional[str] = None, tags: Optional[str] = None) -> str:
+    def add_document(self, title: str, content: str, doc_type: Optional[str] = None, tags: Optional[str] = None, abstract: Optional[str] = None, abstract_source: Optional[str] = None) -> str:
         """Add a new document to the store"""
         # Ensure model is loaded for embedding generation
         self._load_model()
@@ -77,15 +77,14 @@ class DocumentStoreV2Optimized:
                 title=title,
                 content=content,
                 doc_type=doc_type,
-                tags=tags
+                tags=tags,
+                abstract=abstract,
+                abstract_source=abstract_source
             )
             session.add(document)
             
-            # Generate embedding (include tags in the embedding)
-            embedding_text = content
-            if tags:
-                embedding_text = f"{content}\n\nTags: {tags}"
-            embedding = self.model.encode(embedding_text).tolist()
+            # Generate embedding (only use content, not tags)
+            embedding = self.model.encode(content).tolist()
             
             # Add to ChromaDB with metadata
             self.collection.add(
@@ -218,7 +217,7 @@ class DocumentStoreV2Optimized:
             return {
                 'total_documents': doc_count,
                 'embedding_dimension': self.embedding_dim,
-                'model': 'all-MiniLM-L6-v2',
+                'model': 'all-MiniLM-L12-v2',
                 'storage_location': self.storage_dir,
                 'chroma_collection_count': self.collection.count(),
                 'database_size_kb': db_size_kb
@@ -279,7 +278,7 @@ class DocumentStoreV2Optimized:
         finally:
             session.close()
     
-    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None, tags: str = None) -> bool:
+    def update_document(self, doc_id: str, title: str = None, content: str = None, doc_type: str = None, tags: str = None, abstract: str = None, abstract_source: str = None) -> bool:
         """Update a document's content and metadata"""
         session = get_session(self.engine)
         
@@ -298,16 +297,17 @@ class DocumentStoreV2Optimized:
                 document.doc_type = doc_type
             if tags is not None:
                 document.tags = tags
+            if abstract is not None:
+                document.abstract = abstract
+            if abstract_source is not None:
+                document.abstract_source = abstract_source
             
             session.commit()
             
-            # If content or tags were updated, we need to update the embedding
-            if (content is not None or tags is not None) and self.model:
-                # Generate new embedding (include tags)
-                embedding_text = document.content
-                if document.tags:
-                    embedding_text = f"{document.content}\n\nTags: {document.tags}"
-                embedding = self.model.encode([embedding_text])[0].tolist()
+            # If content was updated, we need to update the embedding
+            if content is not None and self.model:
+                # Generate new embedding (only use content, not tags)
+                embedding = self.model.encode([document.content])[0].tolist()
                 
                 # Update in ChromaDB
                 self.collection.update(

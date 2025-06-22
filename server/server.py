@@ -9,7 +9,7 @@ from anthropic import Anthropic
 from datetime import datetime
 import numpy as np
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 import time
 from collections import defaultdict
 import PyPDF2
@@ -20,10 +20,15 @@ import subprocess
 from pdf2image import convert_from_path
 from PIL import Image
 import json
+import requests
+from urllib.parse import urlparse, unquote
+import tempfile
 
 from document_store_v2_optimized import DocumentStoreV2Optimized as DocumentStoreV2
 import config
 from database_manager import get_database_manager, DatabaseInfo
+from abstract_extractor import AbstractExtractor
+from pdf_extractor_v2 import PDFExtractorV2
 
 
 class DocumentRequest(BaseModel):
@@ -42,6 +47,8 @@ class UpdateRequest(BaseModel):
     content: Optional[str] = None
     doc_type: Optional[str] = None
     tags: Optional[str] = None  # Comma-separated tags
+    abstract: Optional[str] = None
+    abstract_source: Optional[str] = None
 
 
 class ClaudeRequest(BaseModel):
@@ -65,12 +72,17 @@ class ClusterRequest(BaseModel):
 class ClusterResponse(BaseModel):
     clusters: List[Dict[str, Any]]
     num_clusters: int
-    silhouette_score: float
+    silhouette_score: float  # Actually Davies-Bouldin score now (lower is better)
     total_documents: int
 
 
 class OpenPDFRequest(BaseModel):
     filename: str
+
+
+class ImportPDFRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
 
 
 class CreateDatabaseRequest(BaseModel):
@@ -81,6 +93,10 @@ class CreateDatabaseRequest(BaseModel):
 class UpdateDatabaseRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+
+
+class MoveDocumentRequest(BaseModel):
+    target_database_id: str
 
 
 class DatabaseResponse(BaseModel):
@@ -98,6 +114,8 @@ class DocumentResponse(BaseModel):
     content: str
     doc_type: Optional[str] = None
     tags: Optional[str] = None
+    abstract: Optional[str] = None
+    abstract_source: Optional[str] = None
     created_at: Optional[str]
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
@@ -133,6 +151,12 @@ if config.ANTHROPIC_API_KEY:
 else:
     print("Warning: ANTHROPIC_API_KEY not found. Claude features will be disabled.")
 
+# Initialize abstract extractor
+abstract_extractor = AbstractExtractor(anthropic_client)
+
+# Initialize PDF extractor
+pdf_extractor = PDFExtractorV2()
+
 # Cluster cache
 cluster_cache = {
     'clusters': None,
@@ -149,7 +173,21 @@ def read_root():
 @app.post("/documents", response_model=DocumentResponse)
 def add_document(doc: DocumentRequest):
     """Add a new document to the store"""
-    doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type, tags=doc.tags)
+    # Extract abstract for non-PDF documents
+    abstract, abstract_source = abstract_extractor.extract_abstract(
+        doc.content, 
+        doc.doc_type or "txt", 
+        doc.title
+    )
+    
+    doc_id = document_store.add_document(
+        doc.title, 
+        doc.content, 
+        doc_type=doc.doc_type, 
+        tags=doc.tags,
+        abstract=abstract,
+        abstract_source=abstract_source
+    )
     # Invalidate cluster cache when document is added
     invalidate_cluster_cache()
     # Fetch the created document
@@ -164,7 +202,21 @@ def import_documents(documents: List[DocumentRequest]):
     """Import multiple documents"""
     results = []
     for doc in documents:
-        doc_id = document_store.add_document(doc.title, doc.content, doc_type=doc.doc_type, tags=doc.tags)
+        # Extract abstract
+        abstract, abstract_source = abstract_extractor.extract_abstract(
+            doc.content, 
+            doc.doc_type or "txt", 
+            doc.title
+        )
+        
+        doc_id = document_store.add_document(
+            doc.title, 
+            doc.content, 
+            doc_type=doc.doc_type, 
+            tags=doc.tags,
+            abstract=abstract,
+            abstract_source=abstract_source
+        )
         results.append({"id": doc_id, "title": doc.title})
     return {"imported": len(results), "documents": results}
 
@@ -279,7 +331,31 @@ def rename_document(doc_id: str, request: RenameRequest):
 @app.put("/documents/{doc_id}", response_model=DocumentResponse)
 def update_document(doc_id: str, request: UpdateRequest):
     """Update a document's content and metadata"""
-    if document_store.update_document(doc_id, request.title, request.content, request.doc_type, request.tags):
+    # If content is being updated and no abstract is provided, regenerate it
+    if request.content and not request.abstract:
+        # Get the current document to check doc_type
+        current_docs = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+        if current_docs:
+            doc_type = request.doc_type or current_docs[0].get('doc_type', 'txt')
+            title = request.title or current_docs[0].get('title', '')
+            # Generate new abstract
+            abstract, abstract_source = abstract_extractor.extract_abstract(
+                request.content, 
+                doc_type, 
+                title
+            )
+            request.abstract = abstract
+            request.abstract_source = abstract_source
+    
+    if document_store.update_document(
+        doc_id, 
+        request.title, 
+        request.content, 
+        request.doc_type, 
+        request.tags,
+        request.abstract,
+        request.abstract_source
+    ):
         # Invalidate cluster cache when document is updated
         invalidate_cluster_cache()
         # Get the updated document
@@ -287,6 +363,142 @@ def update_document(doc_id: str, request: UpdateRequest):
         if documents:
             return DocumentResponse(**documents[0])
     raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+
+
+@app.post("/documents/{doc_id}/move", response_model=DocumentResponse)
+def move_document(doc_id: str, request: MoveDocumentRequest):
+    """Move a document to a different database"""
+    global document_store
+    
+    try:
+        # Validate request
+        if not request.target_database_id:
+            raise HTTPException(status_code=400, detail="target_database_id is required")
+            
+        # Get the document from current database
+        documents = [d for d in document_store.get_all_documents() if d['id'] == doc_id]
+        if not documents:
+            raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
+        
+        source_doc = documents[0]
+        
+        # Get database manager
+        db_manager = get_database_manager()
+        current_db = db_manager.get_current_database()
+        
+        # Verify target database exists
+        all_databases = db_manager.list_databases()
+        target_db = next((db for db in all_databases if db.id == request.target_database_id), None)
+        if not target_db:
+            raise HTTPException(status_code=404, detail=f"Target database {request.target_database_id} not found")
+        
+        print(f"Move request: doc_id={doc_id}, current_db={current_db.id}, target_db={request.target_database_id}")
+        
+        if current_db.id == request.target_database_id:
+            raise HTTPException(status_code=400, detail="Source and target databases are the same")
+        
+        # Create a new document store for the target database without switching global state
+        import config
+        from pathlib import Path
+        
+        # Save current config
+        original_db_id = current_db.id
+        
+        # Temporarily set config for target database
+        config.set_database_paths(request.target_database_id)
+        target_store = DocumentStoreV2(load_model=True, database_id=request.target_database_id)
+        
+        # Check if this is a PDF document
+        is_pdf = (source_doc.get('doc_type') == 'pdf' or 
+                  source_doc.get('content', '').startswith('[PDF_FILE:'))
+        
+        if is_pdf:
+            # Extract PDF filename from content
+            import re
+            pdf_match = re.search(r'\[PDF_FILE:(.*?)\]', source_doc['content'])
+            if pdf_match:
+                pdf_filename = pdf_match.group(1)
+                
+                # Copy PDF file to target database's pdfs directory
+                import shutil
+                source_pdf_dir = config.PDFS_DIR
+                
+                # Set paths for target database
+                config.set_database_paths(request.target_database_id)
+                target_pdf_dir = config.PDFS_DIR
+                target_pdf_dir.mkdir(parents=True, exist_ok=True)
+                
+                source_pdf_path = source_pdf_dir / pdf_filename
+                target_pdf_path = target_pdf_dir / pdf_filename
+                
+                # Copy the PDF file if it exists
+                if source_pdf_path.exists():
+                    shutil.copy2(source_pdf_path, target_pdf_path)
+                    
+                    # Also copy thumbnails if they exist
+                    source_thumb_dir = config.PDF_THUMBNAILS_DIR
+                    config.set_database_paths(request.target_database_id)
+                    target_thumb_dir = config.PDF_THUMBNAILS_DIR
+                    target_thumb_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Copy all thumbnail files for this PDF
+                    thumb_base = pdf_filename.rsplit('.', 1)[0]
+                    config.set_database_paths(original_db_id)
+                    for thumb_file in source_thumb_dir.glob(f"{thumb_base}_page_*.jpg"):
+                        target_thumb = target_thumb_dir / thumb_file.name
+                        shutil.copy2(thumb_file, target_thumb)
+                
+                # Restore config before adding document
+                config.set_database_paths(request.target_database_id)
+        
+        # Add document to target database
+        new_doc_id = target_store.add_document(
+            title=source_doc['title'],
+            content=source_doc['content'],
+            doc_type=source_doc.get('doc_type'),
+            tags=source_doc.get('tags')
+        )
+        
+        # Restore original config
+        config.set_database_paths(original_db_id)
+        
+        # Delete from source database (using the global document_store)
+        if document_store.delete_document(doc_id):
+            # If it was a PDF, also delete the PDF file from source
+            if is_pdf and 'pdf_filename' in locals():
+                source_pdf_path = config.PDFS_DIR / pdf_filename
+                if source_pdf_path.exists():
+                    source_pdf_path.unlink()
+                    
+                # Delete thumbnails from source
+                thumb_base = pdf_filename.rsplit('.', 1)[0]
+                for thumb_file in config.PDF_THUMBNAILS_DIR.glob(f"{thumb_base}_page_*.jpg"):
+                    thumb_file.unlink()
+            # Get the new document info
+            config.set_database_paths(request.target_database_id)
+            new_docs = target_store.get_all_documents()
+            new_doc = next((d for d in new_docs if d['id'] == new_doc_id), None)
+            
+            # Restore config again
+            config.set_database_paths(original_db_id)
+            
+            # Invalidate cluster cache
+            invalidate_cluster_cache()
+            
+            if new_doc:
+                return DocumentResponse(**new_doc)
+            else:
+                raise HTTPException(status_code=500, detail="Document moved but could not retrieve new document info")
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete document from source database")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in move_document: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error moving document: {str(e)}")
 
 
 @app.post("/claude", response_model=DocumentResponse)
@@ -381,14 +593,25 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Read PDF content
         pdf_content = await file.read()
         
-        # Extract text from PDF
+        # Use enhanced PDF extractor
+        text_content, pdf_title, pdf_abstract = pdf_extractor.extract_text_and_metadata(pdf_content)
+        
+        # Get number of pages for metadata
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
-        text_content = ""
         num_pages = len(pdf_reader.pages)
         
-        for page_num in range(num_pages):
-            page = pdf_reader.pages[page_num]
-            text_content += page.extract_text() + "\n\n"
+        # Log extraction results
+        if pdf_title:
+            print(f"Extracted PDF title: {pdf_title}")
+        if pdf_abstract:
+            print(f"Extracted PDF abstract (first 100 chars): {pdf_abstract[:100]}...")
+        
+        # Fallback to filename without extension
+        if not pdf_title:
+            pdf_title = file.filename.rsplit('.', 1)[0]
+            print(f"Using filename as title: {pdf_title}")
+        
+        # text_content is already extracted by pdf_extractor, no need to extract again
         
         # Clean up the text
         text_content = text_content.strip()
@@ -411,11 +634,21 @@ async def upload_pdf(file: UploadFile = File(...)):
         filename_base = safe_filename.rsplit('.', 1)[0]
         thumbnail_paths = generate_pdf_thumbnails(str(pdf_path), str(thumbnail_dir), filename_base)
         
-        # Create document with extracted text
+        # Use abstract from enhanced extractor if available
+        if pdf_abstract:
+            abstract = pdf_abstract
+            abstract_source = "extracted"
+        else:
+            # Try with abstract extractor as fallback
+            abstract, abstract_source = abstract_extractor.extract_abstract(text_content, "pdf", pdf_title)
+        
+        # Create document with extracted text and abstract
         doc_id = document_store.add_document(
-            title=file.filename,
+            title=pdf_title,
             content=text_content,
-            doc_type="pdf"
+            doc_type="pdf",
+            abstract=abstract,
+            abstract_source=abstract_source
         )
         
         # Store the PDF path and metadata in the document content
@@ -438,6 +671,96 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF file: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+
+
+@app.post("/import-pdf-url", response_model=DocumentResponse)
+async def import_pdf_from_url(request: ImportPDFRequest):
+    """Import a PDF from a URL"""
+    try:
+        # Validate URL
+        parsed_url = urlparse(request.url)
+        if not parsed_url.scheme in ['http', 'https']:
+            raise HTTPException(status_code=400, detail="Only HTTP(S) URLs are supported")
+        
+        # Download PDF with timeout and size limit
+        print(f"Downloading PDF from: {request.url}")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        response = requests.get(request.url, headers=headers, timeout=30, stream=True)
+        response.raise_for_status()
+        
+        # Check content type
+        content_type = response.headers.get('content-type', '').lower()
+        if 'application/pdf' not in content_type and not request.url.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail=f"URL does not appear to be a PDF (content-type: {content_type})")
+        
+        # Download with size limit (50MB)
+        max_size = 50 * 1024 * 1024
+        chunks = []
+        size = 0
+        
+        for chunk in response.iter_content(chunk_size=8192):
+            size += len(chunk)
+            if size > max_size:
+                raise HTTPException(status_code=400, detail="PDF file too large (max 50MB)")
+            chunks.append(chunk)
+        
+        pdf_content = b''.join(chunks)
+        
+        # Extract filename from URL or use provided title
+        if request.title:
+            original_filename = request.title
+            if not original_filename.endswith('.pdf'):
+                original_filename += '.pdf'
+        else:
+            # Try to get filename from Content-Disposition header
+            content_disposition = response.headers.get('content-disposition', '')
+            if 'filename=' in content_disposition:
+                original_filename = content_disposition.split('filename=')[-1].strip('"\'')
+            else:
+                # Extract from URL path
+                path = unquote(parsed_url.path)
+                original_filename = os.path.basename(path)
+                
+                # Clean up common URL patterns in filenames
+                if original_filename:
+                    # Remove .pdf extension for now (will be added back)
+                    if original_filename.lower().endswith('.pdf'):
+                        original_filename = original_filename[:-4]
+                    
+                    # Replace hyphens and underscores with spaces
+                    original_filename = original_filename.replace('-', ' ').replace('_', ' ')
+                    
+                    # Capitalize words (title case)
+                    original_filename = ' '.join(word.capitalize() for word in original_filename.split())
+                    
+                    # Add .pdf back
+                    original_filename += '.pdf'
+                else:
+                    original_filename = 'downloaded.pdf'
+        
+        # Create a file-like object for the existing upload logic
+        class PDFFile:
+            def __init__(self, content, filename):
+                self.file = io.BytesIO(content)
+                self.filename = filename
+            
+            async def read(self):
+                return self.file.getvalue()
+        
+        pdf_file = PDFFile(pdf_content, original_filename)
+        
+        # Use existing upload logic
+        return await upload_pdf(pdf_file)
+        
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=408, detail="Timeout downloading PDF")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Error downloading PDF: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error importing PDF: {str(e)}")
 
 
 @app.get("/pdf/{filename}")
@@ -980,7 +1303,7 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
     
     # Determine optimal number of clusters if not specified
     if request.num_clusters is None:
-        best_score = -1
+        best_score = float('inf')  # For Davies-Bouldin, lower is better
         best_k = 2
         
         # Try different numbers of clusters
@@ -988,10 +1311,10 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
             kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
             labels = kmeans.fit_predict(embeddings)
             
-            # Calculate silhouette score
+            # Calculate Davies-Bouldin score (lower is better)
             if k < len(embeddings):
-                score = silhouette_score(embeddings, labels)
-                if score > best_score:
+                score = davies_bouldin_score(embeddings, labels)
+                if score < best_score:  # Looking for minimum score
                     best_score = score
                     best_k = k
         
@@ -1002,7 +1325,7 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
     # Perform final clustering
     kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
     labels = kmeans.fit_predict(embeddings)
-    final_score = silhouette_score(embeddings, labels)
+    final_score = davies_bouldin_score(embeddings, labels)
     
     # Organize documents by cluster
     clusters = []

@@ -14,6 +14,8 @@ class Document(Base):
     content = Column(Text, nullable=False)
     doc_type = Column(String, nullable=True)  # e.g., 'txt', 'md', 'pdf', 'json'
     tags = Column(String, nullable=True)  # Comma-separated tags
+    abstract = Column(Text, nullable=True)  # Document abstract/summary
+    abstract_source = Column(String, nullable=True)  # 'extracted', 'ai_generated', 'manual', 'first_paragraph'
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -24,6 +26,8 @@ class Document(Base):
             'content': self.content,
             'doc_type': self.doc_type,
             'tags': self.tags,
+            'abstract': self.abstract,
+            'abstract_source': self.abstract_source,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
