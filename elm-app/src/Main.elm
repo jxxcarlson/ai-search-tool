@@ -1058,7 +1058,7 @@ update msg model =
                 "d" ->
                     -- Ctrl+D: Download PDF from URL
                     ( { model | showPDFImportModal = True, showAddDocumentMenu = False }
-                    , Cmd.none
+                    , Task.attempt (\_ -> NoOp) (Browser.Dom.focus "pdf-import-url-input")
                     )
 
                 "c" ->

@@ -725,11 +725,26 @@ async def import_pdf_from_url(request: ImportPDFRequest):
             print(f"[WARNING] SSL verification failed for {request.url}, retrying without verification")
             response = requests.get(request.url, headers=headers, timeout=30, stream=True, verify=False)
             response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 403:
+                raise HTTPException(status_code=400, detail="Access forbidden. The server is blocking automated downloads. Try downloading the PDF manually and uploading it.")
+            elif response.status_code == 404:
+                raise HTTPException(status_code=400, detail="PDF not found at the specified URL.")
+            else:
+                raise HTTPException(status_code=400, detail=f"HTTP error {response.status_code}: {str(e)}")
         
         # Check content type
         content_type = response.headers.get('content-type', '').lower()
-        if 'application/pdf' not in content_type and not request.url.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail=f"URL does not appear to be a PDF (content-type: {content_type})")
+        if 'application/pdf' not in content_type:
+            # Even if URL ends with .pdf, check if we got HTML (common for error pages)
+            if 'text/html' in content_type:
+                if response.status_code == 200:
+                    detail = "The server returned an HTML page instead of a PDF. This often means the PDF requires authentication or the link is expired."
+                else:
+                    detail = f"The server returned an HTML error page (status {response.status_code}). The PDF may require authentication."
+            else:
+                detail = f"URL does not appear to be a PDF (content-type: {content_type})"
+            raise HTTPException(status_code=400, detail=detail)
         
         # Download with size limit (50MB)
         max_size = 50 * 1024 * 1024
