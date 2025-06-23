@@ -57,12 +57,12 @@ def backup_existing_data(backup_dir):
     
     # Define what to backup
     backup_items = [
-        "server/storage/documents.db",
-        "server/storage/chroma_db",
-        "server/storage/documents",
-        "server/storage/pdfs",
-        "server/storage/pdf_thumbnails",
-        "server/storage/document_ids.json"
+        "../server/storage/documents.db",
+        "../server/storage/chroma_db",
+        "../server/storage/documents",
+        "../server/storage/pdfs",
+        "../server/storage/pdf_thumbnails",
+        "../server/storage/document_ids.json"
     ]
     
     for item in backup_items:
@@ -132,12 +132,12 @@ def import_data(import_source, backup=True, verify=True):
     print("\nImporting data...")
     
     import_map = {
-        "database": ("server/storage/documents.db", "server/storage/documents.db", "file"),
-        "chroma_db": ("server/storage/chroma_db", "server/storage/chroma_db", "directory"),
-        "documents": ("server/storage/documents", "server/storage/documents", "directory"),
-        "pdfs": ("server/storage/pdfs", "server/storage/pdfs", "directory"),
-        "pdf_thumbnails": ("server/storage/pdf_thumbnails", "server/storage/pdf_thumbnails", "directory"),
-        "document_ids": ("server/storage/document_ids.json", "server/storage/document_ids.json", "file"),
+        "database": ("../server/storage/documents.db", "../server/storage/documents.db", "file"),
+        "chroma_db": ("../server/storage/chroma_db", "../server/storage/chroma_db", "directory"),
+        "documents": ("../server/storage/documents", "../server/storage/documents", "directory"),
+        "pdfs": ("../server/storage/pdfs", "../server/storage/pdfs", "directory"),
+        "pdf_thumbnails": ("../server/storage/pdf_thumbnails", "../server/storage/pdf_thumbnails", "directory"),
+        "document_ids": ("../server/storage/document_ids.json", "../server/storage/document_ids.json", "file"),
     }
     
     for item_name, (source_rel, dest_rel, item_type) in import_map.items():
@@ -180,8 +180,8 @@ def import_data(import_source, backup=True, verify=True):
     print("\nVerifying import...")
     
     # Check database
-    if os.path.exists("server/storage/documents.db"):
-        conn = sqlite3.connect("server/storage/documents.db")
+    if os.path.exists("../server/storage/documents.db"):
+        conn = sqlite3.connect("../server/storage/documents.db")
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM documents")
         doc_count = cursor.fetchone()[0]
@@ -191,7 +191,7 @@ def import_data(import_source, backup=True, verify=True):
         print("  ✗ Database not found")
     
     # Check ChromaDB
-    if os.path.exists("server/storage/chroma_db"):
+    if os.path.exists("../server/storage/chroma_db"):
         print("  ✓ ChromaDB directory present")
     else:
         print("  ✗ ChromaDB directory not found")

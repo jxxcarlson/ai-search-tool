@@ -18,12 +18,12 @@ def backup_data(backup_dir):
     
     # Define what to backup
     items_to_backup = [
-        ("server/storage/documents.db", "documents.db"),
-        ("server/storage/chroma_db", "chroma_db"),
-        ("server/storage/documents", "documents"),
-        ("server/storage/pdfs", "pdfs"),
-        ("server/storage/pdf_thumbnails", "pdf_thumbnails"),
-        ("server/storage/document_ids.json", "document_ids.json")
+        ("../server/storage/documents.db", "documents.db"),
+        ("../server/storage/chroma_db", "chroma_db"),
+        ("../server/storage/documents", "documents"),
+        ("../server/storage/pdfs", "pdfs"),
+        ("../server/storage/pdf_thumbnails", "pdf_thumbnails"),
+        ("../server/storage/document_ids.json", "document_ids.json")
     ]
     
     backed_up = False
@@ -61,12 +61,12 @@ def reset_database(no_backup=False):
     
     # Remove existing storage
     storage_items = [
-        "server/storage/documents.db",
-        "server/storage/chroma_db",
-        "server/storage/documents",
-        "server/storage/pdfs", 
-        "server/storage/pdf_thumbnails",
-        "server/storage/document_ids.json"
+        "../server/storage/documents.db",
+        "../server/storage/chroma_db",
+        "../server/storage/documents",
+        "../server/storage/pdfs", 
+        "../server/storage/pdf_thumbnails",
+        "../server/storage/document_ids.json"
     ]
     
     for item in storage_items:
@@ -84,10 +84,10 @@ def reset_database(no_backup=False):
     
     # Recreate directory structure
     directories = [
-        "server/storage",
-        "server/storage/documents",
-        "server/storage/pdfs",
-        "server/storage/pdf_thumbnails"
+        "../server/storage",
+        "../server/storage/documents",
+        "../server/storage/pdfs",
+        "../server/storage/pdf_thumbnails"
     ]
     
     print("\nCreating fresh directories...")
@@ -96,7 +96,7 @@ def reset_database(no_backup=False):
         print(f"  ✓ Created {directory}")
     
     # Initialize document_ids.json
-    doc_ids_path = Path("server/storage/document_ids.json")
+    doc_ids_path = Path("../server/storage/document_ids.json")
     with open(doc_ids_path, "w") as f:
         f.write("[]")
     print(f"  ✓ Created {doc_ids_path}")

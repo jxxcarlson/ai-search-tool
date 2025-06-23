@@ -76,33 +76,33 @@ def export_data(output_dir=None, compress=True):
     # Define what to export
     export_items = {
         "database": {
-            "source": "server/storage/documents.db",
-            "destination": "server/storage/documents.db",
+            "source": "../server/storage/documents.db",
+            "destination": "../server/storage/documents.db",
             "type": "file"
         },
         "chroma_db": {
-            "source": "server/storage/chroma_db",
-            "destination": "server/storage/chroma_db",
+            "source": "../server/storage/chroma_db",
+            "destination": "../server/storage/chroma_db",
             "type": "directory"
         },
         "documents": {
-            "source": "server/storage/documents",
-            "destination": "server/storage/documents",
+            "source": "../server/storage/documents",
+            "destination": "../server/storage/documents",
             "type": "directory"
         },
         "pdfs": {
-            "source": "server/storage/pdfs",
-            "destination": "server/storage/pdfs",
+            "source": "../server/storage/pdfs",
+            "destination": "../server/storage/pdfs",
             "type": "directory"
         },
         "pdf_thumbnails": {
-            "source": "server/storage/pdf_thumbnails",
-            "destination": "server/storage/pdf_thumbnails",
+            "source": "../server/storage/pdf_thumbnails",
+            "destination": "../server/storage/pdf_thumbnails",
             "type": "directory"
         },
         "document_ids": {
-            "source": "server/storage/document_ids.json",
-            "destination": "server/storage/document_ids.json",
+            "source": "../server/storage/document_ids.json",
+            "destination": "../server/storage/document_ids.json",
             "type": "file"
         },
         "sample_documents": {
@@ -177,12 +177,12 @@ def export_data(output_dir=None, compress=True):
             }
     
     # Gather statistics
-    db_stats = get_database_stats(export_path / "server/storage/documents.db")
+    db_stats = get_database_stats(export_path / "../server/storage/documents.db")
     manifest["statistics"] = {
         "document_count": db_stats["document_count"],
         "database_size": db_stats["database_size"],
-        "pdf_count": count_files_in_directory(export_path / "server/storage/pdfs"),
-        "thumbnail_count": count_files_in_directory(export_path / "server/storage/pdf_thumbnails"),
+        "pdf_count": count_files_in_directory(export_path / "../server/storage/pdfs"),
+        "thumbnail_count": count_files_in_directory(export_path / "../server/storage/pdf_thumbnails"),
         "total_export_size": sum(
             os.path.getsize(os.path.join(dirpath, filename))
             for dirpath, dirnames, filenames in os.walk(export_path)
