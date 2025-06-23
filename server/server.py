@@ -31,6 +31,7 @@ import config
 from database_manager import get_database_manager, DatabaseInfo
 from abstract_extractor import AbstractExtractor
 from pdf_extractor_v2 import PDFExtractorV2
+from author_extractor import AuthorExtractor
 
 
 class DocumentRequest(BaseModel):
@@ -39,6 +40,7 @@ class DocumentRequest(BaseModel):
     doc_type: Optional[str] = None
     tags: Optional[str] = None  # Comma-separated tags
     source: Optional[str] = None  # URL or other source reference
+    authors: Optional[str] = None  # Semicolon-separated authors
 
 
 class RenameRequest(BaseModel):
@@ -53,6 +55,7 @@ class UpdateRequest(BaseModel):
     abstract: Optional[str] = None
     abstract_source: Optional[str] = None
     source: Optional[str] = None  # URL or other source reference
+    authors: Optional[str] = None  # Semicolon-separated authors
 
 
 class ClaudeRequest(BaseModel):
@@ -121,6 +124,7 @@ class DocumentResponse(BaseModel):
     abstract: Optional[str] = None
     abstract_source: Optional[str] = None
     source: Optional[str] = None
+    authors: Optional[str] = None
     created_at: Optional[str]
     updated_at: Optional[str]
     similarity_score: Optional[float] = None
@@ -162,6 +166,9 @@ abstract_extractor = AbstractExtractor(anthropic_client)
 # Initialize PDF extractor
 pdf_extractor = PDFExtractorV2()
 
+# Initialize author extractor
+author_extractor = AuthorExtractor()
+
 # Cluster cache
 cluster_cache = {
     'clusters': None,
@@ -185,6 +192,13 @@ def add_document(doc: DocumentRequest):
         doc.title
     )
     
+    # Extract authors if not provided
+    authors = doc.authors
+    if not authors or authors.strip() == "":
+        extracted_authors = author_extractor.extract_authors(doc.content, doc.doc_type)
+        if extracted_authors:
+            authors = extracted_authors
+    
     doc_id = document_store.add_document(
         doc.title, 
         doc.content, 
@@ -192,7 +206,8 @@ def add_document(doc: DocumentRequest):
         tags=doc.tags,
         abstract=abstract,
         abstract_source=abstract_source,
-        source=doc.source
+        source=doc.source,
+        authors=authors
     )
     # Invalidate cluster cache when document is added
     invalidate_cluster_cache()
@@ -362,7 +377,8 @@ def update_document(doc_id: str, request: UpdateRequest):
         request.tags,
         request.abstract,
         request.abstract_source,
-        request.source
+        request.source,
+        request.authors
     ):
         # Invalidate cluster cache when document is updated
         invalidate_cluster_cache()
@@ -650,13 +666,17 @@ async def upload_pdf(file: UploadFile = File(...)):
             # Try with abstract extractor as fallback
             abstract, abstract_source = abstract_extractor.extract_abstract(text_content, "pdf", pdf_title)
         
-        # Create document with extracted text and abstract
+        # Extract authors from PDF content
+        extracted_authors = author_extractor.extract_authors(text_content, "pdf")
+        
+        # Create document with extracted text, abstract, and authors
         doc_id = document_store.add_document(
             title=pdf_title,
             content=text_content,
             doc_type="pdf",
             abstract=abstract,
-            abstract_source=abstract_source
+            abstract_source=abstract_source,
+            authors=extracted_authors
         )
         
         # Store the PDF path and metadata in the document content
@@ -840,15 +860,22 @@ async def import_pdf_from_url(request: ImportPDFRequest):
                 # Try with abstract extractor as fallback
                 abstract, abstract_source = abstract_extractor.extract_abstract(text_content, "pdf", pdf_title)
             
-            # Create document with extracted text, abstract, and source URL
+            # Extract authors from PDF content
+            extracted_authors = author_extractor.extract_authors(text_content, "pdf")
+            
+            # Create document with extracted text, abstract, authors, and source URL
             print(f"[DEBUG] Creating document with title: {pdf_title}")
+            if extracted_authors:
+                print(f"[DEBUG] Extracted authors: {extracted_authors}")
+            
             doc_id = document_store.add_document(
                 title=pdf_title,
                 content=text_content,
                 doc_type="pdf",
                 abstract=abstract,
                 abstract_source=abstract_source,
-                source=request.url  # Set source to the URL
+                source=request.url,  # Set source to the URL
+                authors=extracted_authors
             )
             print(f"[DEBUG] Document created with ID: {doc_id}")
             
@@ -1427,7 +1454,7 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
     
     # Determine optimal number of clusters if not specified
     if request.num_clusters is None:
-        best_score = float('inf')  # For Davies-Bouldin, lower is better
+        best_score = -1  # For Silhouette, higher is better
         best_k = 2
         
         # Try different numbers of clusters
@@ -1435,10 +1462,10 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
             kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
             labels = kmeans.fit_predict(embeddings)
             
-            # Calculate Davies-Bouldin score (lower is better)
+            # Calculate Silhouette score (higher is better)
             if k < len(embeddings):
-                score = davies_bouldin_score(embeddings, labels)
-                if score < best_score:  # Looking for minimum score
+                score = silhouette_score(embeddings, labels)
+                if score > best_score:  # Looking for maximum score
                     best_score = score
                     best_k = k
         
@@ -1449,7 +1476,7 @@ def compute_clusters(request: ClusterRequest) -> ClusterResponse:
     # Perform final clustering
     kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
     labels = kmeans.fit_predict(embeddings)
-    final_score = davies_bouldin_score(embeddings, labels)
+    final_score = silhouette_score(embeddings, labels)
     
     # Organize documents by cluster
     clusters = []

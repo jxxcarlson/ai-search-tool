@@ -17,6 +17,7 @@ class Document(Base):
     abstract = Column(Text, nullable=True)  # Document abstract/summary
     abstract_source = Column(String, nullable=True)  # 'extracted', 'ai_generated', 'manual', 'first_paragraph'
     source = Column(String, nullable=True)  # URL or other source reference
+    authors = Column(String, nullable=True)  # Semicolon-separated list of authors
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -30,6 +31,7 @@ class Document(Base):
             'abstract': self.abstract,
             'abstract_source': self.abstract_source,
             'source': self.source,
+            'authors': self.authors,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

@@ -19,6 +19,7 @@ type alias Document =
     , abstract : Maybe String
     , abstractSource : Maybe String
     , source : Maybe String
+    , authors : Maybe String
     , index : Maybe Int
     , clusterId : Maybe Int
     , clusterName : Maybe String
@@ -35,6 +36,7 @@ type alias SearchResult =
     , abstract : Maybe String
     , abstractSource : Maybe String
     , source : Maybe String
+    , authors : Maybe String
     , index : Maybe Int
     , similarityScore : Maybe Float
     , clusterId : Maybe Int
@@ -138,6 +140,7 @@ documentDecoder =
         |> andMap (Decode.maybe (Decode.field "abstract" Decode.string))
         |> andMap (Decode.maybe (Decode.field "abstract_source" Decode.string))
         |> andMap (Decode.maybe (Decode.field "source" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "authors" Decode.string))
         |> andMap (Decode.maybe (Decode.field "index" Decode.int))
         |> andMap (Decode.maybe (Decode.field "cluster_id" Decode.int))
         |> andMap (Decode.maybe (Decode.field "cluster_name" Decode.string))
@@ -155,6 +158,7 @@ searchResultDecoder =
         |> andMap (Decode.maybe (Decode.field "abstract" Decode.string))
         |> andMap (Decode.maybe (Decode.field "abstract_source" Decode.string))
         |> andMap (Decode.maybe (Decode.field "source" Decode.string))
+        |> andMap (Decode.maybe (Decode.field "authors" Decode.string))
         |> andMap (Decode.maybe (Decode.field "index" Decode.int))
         |> andMap (Decode.maybe (Decode.field "similarity_score" Decode.float))
         |> andMap (Decode.maybe (Decode.field "cluster_id" Decode.int))
@@ -180,14 +184,15 @@ apiErrorDecoder =
 
 
 
-encodeDocument : String -> String -> Maybe String -> String -> Maybe String -> Encode.Value
-encodeDocument title content docType tags source =
+encodeDocument : String -> String -> Maybe String -> String -> Maybe String -> Maybe String -> Encode.Value
+encodeDocument title content docType tags source authors =
     Encode.object
         [ ( "title", Encode.string title )
         , ( "content", Encode.string content )
         , ( "doc_type", encodeMaybe Encode.string docType )
         , ( "tags", if String.isEmpty tags then Encode.null else Encode.string tags )
         , ( "source", encodeMaybe Encode.string source )
+        , ( "authors", encodeMaybe Encode.string authors )
         ]
 
 
@@ -216,8 +221,8 @@ encodeMaybe encoder maybeVal =
             Encode.null
 
 
-encodeUpdate : Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Encode.Value
-encodeUpdate title content docType tags abstract abstractSource source =
+encodeUpdate : Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Maybe String -> Encode.Value
+encodeUpdate title content docType tags abstract abstractSource source authors =
     let
         fields =
             List.filterMap identity
@@ -228,6 +233,7 @@ encodeUpdate title content docType tags abstract abstractSource source =
                 , Maybe.map (\a -> ( "abstract", Encode.string a )) abstract
                 , Maybe.map (\s -> ( "abstract_source", Encode.string s )) abstractSource
                 , Maybe.map (\src -> ( "source", Encode.string src )) source
+                , Maybe.map (\auth -> ( "authors", Encode.string auth )) authors
                 ]
     in
     Encode.object fields

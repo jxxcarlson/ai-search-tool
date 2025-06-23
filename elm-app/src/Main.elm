@@ -96,6 +96,7 @@ type alias NewDocument =
     , docType : DocType
     , tags : String
     , source : String
+    , authors : String
     }
 
 
@@ -125,6 +126,7 @@ type alias EditingDocument =
     , docType : Maybe String
     , tags : String
     , source : String
+    , authors : String
     }
 
 
@@ -155,6 +157,7 @@ type Msg
     | UpdateNewDocType String
     | UpdateNewDocTags String
     | UpdateNewDocSource String
+    | UpdateNewDocAuthors String
     | AddDocument
     | DocumentAdded (Result Http.Error Document)
     | LoadStats
@@ -170,6 +173,7 @@ type Msg
     | UpdateEditingDocType String
     | UpdateEditingTags String
     | UpdateEditingSource String
+    | UpdateEditingAuthors String
     | SaveEditingDocument
     | DocumentRenamed (Result Http.Error ())
     | DocumentUpdated (Result Http.Error Document)
@@ -393,7 +397,7 @@ init flags =
       , loading = False
       , error = Nothing
       , view = ListView
-      , newDocument = NewDocument "" "" DTMarkDown "" ""
+      , newDocument = NewDocument "" "" DTMarkDown "" "" ""
       , stats = Nothing
       , editingDocument = Nothing
       , randomDocuments = []
@@ -571,6 +575,13 @@ update msg model =
             in
             ( { model | newDocument = { newDocument_ | source = value } }, Cmd.none )
 
+        UpdateNewDocAuthors value ->
+            let
+                newDocument_ =
+                    model.newDocument
+            in
+            ( { model | newDocument = { newDocument_ | authors = value } }, Cmd.none )
+
         AddDocument ->
             let
                 docType =
@@ -583,6 +594,7 @@ update msg model =
                 docType
                 model.newDocument.tags
                 (if String.isEmpty model.newDocument.source then Nothing else Just model.newDocument.source)
+                (if String.isEmpty model.newDocument.authors then Nothing else Just model.newDocument.authors)
                 DocumentAdded
             )
 
@@ -593,7 +605,7 @@ update msg model =
                         | loading = False
                         , error = Nothing
                         , view = ListView
-                        , newDocument = NewDocument "" "" DTMarkDown "" ""
+                        , newDocument = NewDocument "" "" DTMarkDown "" "" ""
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
@@ -642,7 +654,7 @@ update msg model =
             ( { model | randomDocuments = docs }, Cmd.none )
 
         StartEditingDocument doc ->
-            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType (Maybe.withDefault "" doc.tags) (Maybe.withDefault "" doc.source)) }
+            ( { model | editingDocument = Just (EditingDocument doc.id doc.title doc.content doc.docType (Maybe.withDefault "" doc.tags) (Maybe.withDefault "" doc.source) (Maybe.withDefault "" doc.authors)) }
             , Cmd.none
             )
 
@@ -719,6 +731,14 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        UpdateEditingAuthors authors ->
+            case model.editingDocument of
+                Just editing ->
+                    ( { model | editingDocument = Just { editing | authors = authors } }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         SaveEditingDocument ->
             case model.editingDocument of
                 Just editing ->
@@ -730,6 +750,7 @@ update msg model =
                         editing.docType
                         (Just editing.tags)
                         (if String.isEmpty editing.source then Nothing else Just editing.source)
+                        (if String.isEmpty editing.authors then Nothing else Just editing.authors)
                         DocumentUpdated
                     )
 
@@ -1024,7 +1045,7 @@ update msg model =
             case key of
                 "n" ->
                     -- Ctrl+N: New Document
-                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "", source = "" }, showAddDocumentMenu = False }
+                    ( { model | view = AddDocumentView, newDocument = { title = "", content = "", docType = DTMarkDown, tags = "", source = "", authors = "" }, showAddDocumentMenu = False }
                     , Cmd.none
                     )
 
@@ -1227,6 +1248,7 @@ update msg model =
                         , documents = []
                         , searchResults = []
                         , selectedDocument = Nothing
+                        , view = ListView
                       }
                     , Api.getDocuments model.config GotDocuments
                     )
@@ -1517,18 +1539,14 @@ viewDatabaseMenuItem model database =
              else
                 "database-menu-item"
             )
+        , onClick (SwitchDatabase database.id)
         ]
-        [ div
-            [ class "database-item-content"
-            , onClick (SwitchDatabase database.id)
-            ]
-            [ span [ class "database-item-name" ] [ text database.name ]
-            , span [ class "database-item-count" ] [ text ("(" ++ String.fromInt database.documentCount ++ " docs)") ]
-            ]
+        [ span [ class "database-item-name" ] [ text database.name ]
+        , span [ class "database-item-count" ] [ text ("(" ++ String.fromInt database.documentCount ++ " docs)") ]
         , button
             [ class "database-item-edit"
-            , onClick (ShowEditDatabaseModal database.id)
-            , stopPropagationOn "click" (Decode.succeed (NoOp, True))
+            , type_ "button"
+            , stopPropagationOn "click" (Decode.succeed (ShowEditDatabaseModal database.id, True))
             , title "Edit database name"
             ]
             [ text "✏️" ]
@@ -1979,7 +1997,7 @@ viewSearchResults model =
 
 viewSearchResult : SearchResult -> Html Msg
 viewSearchResult result =
-    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, abstract = result.abstract, abstractSource = result.abstractSource, source = result.source, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
+    div [ class "search-result", onClick (SelectDocument { id = result.id, title = result.title, content = result.content, createdAt = result.createdAt, docType = result.docType, tags = result.tags, abstract = result.abstract, abstractSource = result.abstractSource, source = result.source, authors = result.authors, index = result.index, clusterId = result.clusterId, clusterName = result.clusterName }) ]
         [ h3 [] [ text result.title ]
         , div [ class "document-meta" ]
             [ span [ class "created-at" ] [ text (formatDate result.createdAt) ]
@@ -2283,6 +2301,18 @@ viewReadOnlyDocument model doc =
 
             Nothing ->
                 text ""
+        , case doc.authors of
+            Just authors ->
+                if String.isEmpty authors then
+                    text ""
+                else
+                    div [ class "document-authors" ]
+                        [ span [ class "authors-label" ] [ text "Authors: " ]
+                        , span [ class "authors-text" ] [ text authors ]
+                        ]
+
+            Nothing ->
+                text ""
         , div [ class "document-actions" ]
             (case doc.docType of
                 Just "pdf" ->
@@ -2470,6 +2500,17 @@ viewEditingDocument editing =
                         ]
                         []
                     ]
+                , div [ class "inline-tags-editor" ]
+                    [ label [] [ text "Authors:" ]
+                    , input
+                        [ type_ "text"
+                        , value editing.authors
+                        , onInput UpdateEditingAuthors
+                        , placeholder "e.g., F.M. Claro, Ph.D; Mary Jo Feinhof, M.D."
+                        , class "inline-tags-input"
+                        ]
+                        []
+                    ]
                 ]
             , div [ class "document-actions" ]
                 [ button
@@ -2579,6 +2620,17 @@ viewAddDocument model =
                     , value model.newDocument.source
                     , onInput UpdateNewDocSource
                     , placeholder "e.g., https://example.com/article or Book Title, Page 123"
+                    , class "form-input"
+                    ]
+                    []
+                ]
+            , div [ class "form-group" ]
+                [ label [] [ text "Authors (semicolon-separated)" ]
+                , input
+                    [ type_ "text"
+                    , value model.newDocument.authors
+                    , onInput UpdateNewDocAuthors
+                    , placeholder "e.g., F.M. Claro, Ph.D; Mary Jo Feinhof, M.D."
                     , class "form-input"
                     ]
                     []
